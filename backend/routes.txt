@@ -1,0 +1,3 @@
+# Backend routes
+GET /api/employees
+POST /api/employees
