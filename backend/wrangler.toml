@@ -6,6 +6,6 @@ compatibility_date = "2025-12-01"
 HR_ADMIN_EMAILS = "massimo@ticktockloans.com"
 
 [[d1_databases]]
-binding = "DB"
+binding = "hr_dashboard_db"
 database_name = "hr_dashboard_db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "afe6fdb3-ebd4-4ed2-8a24-ab43fddaba6f"
