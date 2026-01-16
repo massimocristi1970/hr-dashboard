@@ -1,4 +1,10 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8787';
+const RAW_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8787";
+
+const API_BASE =
+  RAW_BASE.startsWith("/")
+    ? `${window.location.origin}${RAW_BASE}`
+    : RAW_BASE;
+
 
 async function fetchAPI(path: string, options: RequestInit = {}) {
   const url = new URL(path, API_BASE);
