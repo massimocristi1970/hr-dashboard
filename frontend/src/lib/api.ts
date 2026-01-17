@@ -1,18 +1,21 @@
-// API Base URL - use environment variable or fallback to Worker URL
-const RAW_BASE = import.meta.env.VITE_API_BASE || "https://hr-dashboard-api.massimo-d6f.workers.dev";
+// API Base URL - HARDCODED to Worker URL to fix deployment issues
+// Environment variable can override, but defaults to Worker URL
+const ENV_API_BASE = import.meta.env.VITE_API_BASE;
+const WORKER_URL = "https://hr-dashboard-api.massimo-d6f.workers.dev";
 
-// Ensure API_BASE is always an absolute URL pointing to the Worker
-// If RAW_BASE is empty or relative, use the Worker URL directly
+// Always use Worker URL unless env variable is a valid HTTP(S) URL
 const API_BASE = 
-  RAW_BASE && !RAW_BASE.startsWith("/") && RAW_BASE.startsWith("http")
-    ? RAW_BASE
-    : "https://hr-dashboard-api.massimo-d6f.workers.dev";
+  ENV_API_BASE && 
+  ENV_API_BASE.trim() !== "" && 
+  !ENV_API_BASE.startsWith("/") && 
+  (ENV_API_BASE.startsWith("http://") || ENV_API_BASE.startsWith("https://"))
+    ? ENV_API_BASE.trim()
+    : WORKER_URL;
 
-// Debug: Log the API base URL (remove in production if needed)
-if (typeof window !== 'undefined' && window.location.hostname.includes('pages.dev')) {
-  console.log('API Base URL:', API_BASE);
-  console.log('Raw Base from env:', import.meta.env.VITE_API_BASE);
-}
+// Debug logging
+console.log('[API Config] Using API Base:', API_BASE);
+console.log('[API Config] Env VITE_API_BASE:', ENV_API_BASE || '(not set)');
+console.log('[API Config] Current origin:', typeof window !== 'undefined' ? window.location.origin : 'server');
 
 
 async function fetchAPI(path: string, options: RequestInit = {}) {
