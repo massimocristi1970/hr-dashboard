@@ -44,16 +44,38 @@ export const api = {
   
   getPendingRequests: () => fetchAPI('/api/leave/pending'),
   
-  approveRequest: (id: number, notes: string) =>
+  approveRequest: (id: number, notes: string, adminOverride?: boolean) =>
     fetchAPI(`/api/leave/${id}/approve`, {
       method: 'PUT',
-      body: JSON.stringify({ notes }),
+      body: JSON.stringify({ notes, admin_override: adminOverride }),
     }),
   
   declineRequest: (id: number, notes: string) =>
     fetchAPI(`/api/leave/${id}/decline`, {
       method: 'PUT',
       body: JSON.stringify({ notes }),
+    }),
+
+  getLeaveConflicts: (id: number) => fetchAPI(`/api/leave/${id}/conflicts`),
+  
+  // Agent files endpoints
+  getMyFiles: () => fetchAPI('/api/files/my-files'),
+  
+  uploadFileMetadata: (data: {
+    filename: string;
+    file_description?: string;
+    onedrive_file_url: string;
+    file_size_bytes?: number;
+    file_type?: string;
+  }) =>
+    fetchAPI('/api/files/upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteFile: (id: number) =>
+    fetchAPI(`/api/files/${id}`, {
+      method: 'DELETE',
     }),
   
   // Admin endpoints
@@ -82,4 +104,18 @@ export const api = {
     }),
   
   getAllRequests: () => fetchAPI('/api/admin/all-requests'),
+
+  // Admin blocked days endpoints
+  getBlockedDays: () => fetchAPI('/api/admin/blocked-days'),
+  
+  addBlockedDay: (data: { blocked_date: string; reason: string }) =>
+    fetchAPI('/api/admin/blocked-days', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  deleteBlockedDay: (id: number) =>
+    fetchAPI(`/api/admin/blocked-days/${id}`, {
+      method: 'DELETE',
+    }),
 };
