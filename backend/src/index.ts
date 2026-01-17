@@ -6,11 +6,15 @@ interface Env {
 }
 
 // Validation schemas
+// Helper to allow empty strings as optional
+const optionalEmail = z.string().email().optional().or(z.literal(''));
+const optionalUrl = z.string().url().optional().or(z.literal(''));
+
 const EmployeeSchema = z.object({
   email: z.string().email(),
   full_name: z.string().min(1),
-  manager_email: z.string().email().optional(),
-  onedrive_folder_url: z.string().url().optional(),
+  manager_email: optionalEmail,
+  onedrive_folder_url: optionalUrl,
 });
 
 const LeaveRequestSchema = z.object({
