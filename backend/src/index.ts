@@ -71,7 +71,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
   
   const origin = req.headers.get('Origin');
 
-  // Handle CORS preflight - MUST return proper headers
+  // Handle CORS preflight FIRST - before any auth checks
+  // OPTIONS requests must work without authentication for CORS to work
   if (method === 'OPTIONS') {
     return new Response(null, { 
       status: 204,
