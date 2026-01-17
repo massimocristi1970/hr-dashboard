@@ -1,20 +1,20 @@
-const RAW_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8787";
+// API Base URL - use environment variable or fallback to Worker URL
+const RAW_BASE = import.meta.env.VITE_API_BASE || "https://hr-dashboard-api.massimo-d6f.workers.dev";
 
+// Ensure API_BASE is always an absolute URL
 const API_BASE =
-  RAW_BASE.startsWith("/")
+  RAW_BASE && RAW_BASE.startsWith("/")
     ? `${window.location.origin}${RAW_BASE}`
-    : RAW_BASE;
+    : RAW_BASE || "https://hr-dashboard-api.massimo-d6f.workers.dev";
 
 
 async function fetchAPI(path: string, options: RequestInit = {}) {
   const url = new URL(path, API_BASE);
   
-  // For local dev, add impersonation parameter if needed
-  if (API_BASE.includes('127.0.0.1') || API_BASE.includes('localhost')) {
-    const devEmail = localStorage.getItem('dev_email');
-    if (devEmail) {
-      url.searchParams.set('as', devEmail);
-    }
+  // Add impersonation parameter if dev_email is set (works for local and production testing)
+  const devEmail = localStorage.getItem('dev_email');
+  if (devEmail) {
+    url.searchParams.set('as', devEmail);
   }
 
   const response = await fetch(url.toString(), {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 interface Env {
-  DB: D1Database;
+  hr_dashboard_db: D1Database;
   HR_ADMIN_EMAILS: string;
 }
 
@@ -30,11 +30,9 @@ const LeaveEntitlementSchema = z.object({
 function getUserEmail(req: Request): string | null {
   const url = new URL(req.url);
   
-  // Local dev impersonation (safe: only works on localhost)
-  if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
-    const impersonate = url.searchParams.get('as');
-    if (impersonate) return impersonate;
-  }
+  // Dev impersonation via query parameter (works for testing in any environment)
+  const impersonate = url.searchParams.get('as');
+  if (impersonate) return impersonate;
   
   // Production: Cloudflare Access header
   return req.headers.get('Cf-Access-Authenticated-User-Email');
@@ -74,7 +72,14 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     return new Response(null, { headers: corsHeaders(req.headers.get('Origin') || undefined) });
   }
 
-  // Auth check
+  // Health check (no auth required)
+  if (path === '/api/health') {
+    return new Response(JSON.stringify({ status: 'ok' }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    });
+  }
+
+  // Auth check for all other endpoints
   const userEmail = getUserEmail(req);
   if (!userEmail) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -86,16 +91,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
   const isAdmin = isHrAdmin(userEmail, env);
 
   try {
-    // Health check
-    if (path === '/api/health') {
-      return new Response(JSON.stringify({ status: 'ok' }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
-      });
-    }
 
     // Get current user info
     if (path === '/api/me' && method === 'GET') {
-      const employee = await env.DB.prepare(
+      const employee = await env.hr_dashboard_db.prepare(
         'SELECT * FROM employees WHERE email = ?'
       ).bind(userEmail).first();
 
@@ -110,7 +109,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
     // Get my leave requests
     if (path === '/api/leave/my-requests' && method === 'GET') {
-      const employee = await env.DB.prepare(
+      const employee = await env.hr_dashboard_db.prepare(
         'SELECT id FROM employees WHERE email = ?'
       ).bind(userEmail).first();
 
@@ -121,7 +120,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      const requests = await env.DB.prepare(
+      const requests = await env.hr_dashboard_db.prepare(
         'SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC'
       ).bind(employee.id).all();
 
@@ -135,7 +134,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const body = await req.json();
       const validated = LeaveRequestSchema.parse(body);
 
-      const employee = await env.DB.prepare(
+      const employee = await env.hr_dashboard_db.prepare(
         'SELECT id FROM employees WHERE email = ?'
       ).bind(userEmail).first();
 
@@ -148,7 +147,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const days = calculateDays(validated.start_date, validated.end_date);
 
-      await env.DB.prepare(
+      await env.hr_dashboard_db.prepare(
         'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status) VALUES (?, ?, ?, ?, ?, ?)'
       ).bind(
         employee.id,
@@ -166,7 +165,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
     // Get pending requests for manager
     if (path === '/api/leave/pending' && method === 'GET') {
-      const requests = await env.DB.prepare(`
+      const requests = await env.hr_dashboard_db.prepare(`
         SELECT lr.*, e.full_name, e.email 
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
@@ -195,7 +194,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const notes = body.notes || '';
 
       // Check if user is manager for this request
-      const request = await env.DB.prepare(`
+      const request = await env.hr_dashboard_db.prepare(`
         SELECT lr.*, e.manager_email
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
@@ -218,7 +217,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const newStatus = action === 'approve' ? 'approved' : 'declined';
 
-      await env.DB.prepare(
+      await env.hr_dashboard_db.prepare(
         'UPDATE leave_requests SET status = ?, manager_notes = ?, updated_at = datetime("now") WHERE id = ?'
       ).bind(newStatus, notes, requestId).run();
 
@@ -236,7 +235,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      const employees = await env.DB.prepare('SELECT * FROM employees ORDER BY full_name').all();
+      const employees = await env.hr_dashboard_db.prepare('SELECT * FROM employees ORDER BY full_name').all();
       return new Response(JSON.stringify(employees.results), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
@@ -254,7 +253,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const body = await req.json();
       const validated = EmployeeSchema.parse(body);
 
-      await env.DB.prepare(
+      await env.hr_dashboard_db.prepare(
         'INSERT INTO employees (email, full_name, manager_email, onedrive_folder_url) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET full_name = ?, manager_email = ?, onedrive_folder_url = ?'
       ).bind(
         validated.email,
@@ -283,7 +282,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const body = await req.json();
       const validated = LeaveEntitlementSchema.parse(body);
 
-      await env.DB.prepare(
+      await env.hr_dashboard_db.prepare(
         'INSERT INTO leave_entitlements (employee_id, year, annual_allowance_days, carryover_days) VALUES (?, ?, ?, ?) ON CONFLICT(employee_id, year) DO UPDATE SET annual_allowance_days = ?, carryover_days = ?'
       ).bind(
         validated.employee_id,
@@ -308,7 +307,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      const requests = await env.DB.prepare(`
+      const requests = await env.hr_dashboard_db.prepare(`
         SELECT lr.*, e.full_name, e.email
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
