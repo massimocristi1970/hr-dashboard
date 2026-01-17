@@ -55,10 +55,12 @@ function calculateDays(startDate: string, endDate: string): number {
 
 // CORS helper
 function corsHeaders(origin?: string) {
+  const allowedOrigin = origin || '*';
   return {
-    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Cf-Access-Authenticated-User-Email',
+    'Access-Control-Max-Age': '86400',
   };
 }
 
@@ -66,10 +68,15 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
+  
+  const origin = req.headers.get('Origin');
 
-  // Handle CORS preflight
+  // Handle CORS preflight - MUST return proper headers
   if (method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders(req.headers.get('Origin') || undefined) });
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders(origin || undefined) 
+    });
   }
 
   // Health check (no auth required)
