@@ -1,20 +1,8 @@
-// API Base URL - HARDCODED to Worker URL to fix deployment issues
-// Environment variable can override, but defaults to Worker URL
-const ENV_API_BASE = import.meta.env.VITE_API_BASE;
-const WORKER_URL = "https://hr-dashboard-api.massimo-d6f.workers.dev";
+// API Base URL - HARDCODED to Worker URL (no environment variable, no fallback)
+const API_BASE = "https://hr-dashboard-api.massimo-d6f.workers.dev";
 
-// Always use Worker URL unless env variable is a valid HTTP(S) URL
-const API_BASE = 
-  ENV_API_BASE && 
-  ENV_API_BASE.trim() !== "" && 
-  !ENV_API_BASE.startsWith("/") && 
-  (ENV_API_BASE.startsWith("http://") || ENV_API_BASE.startsWith("https://"))
-    ? ENV_API_BASE.trim()
-    : WORKER_URL;
-
-// Debug logging
-console.log('[API Config] Using API Base:', API_BASE);
-console.log('[API Config] Env VITE_API_BASE:', ENV_API_BASE || '(not set)');
+// Debug logging to verify correct URL is used
+console.log('[API Config] API Base URL:', API_BASE);
 console.log('[API Config] Current origin:', typeof window !== 'undefined' ? window.location.origin : 'server');
 
 
