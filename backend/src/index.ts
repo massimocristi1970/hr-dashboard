@@ -30,6 +30,27 @@ const LeaveEntitlementSchema = z.object({
   carryover_days: z.number().nonnegative(),
 });
 
+// Schema for agent file upload metadata
+const AgentFileSchema = z.object({
+  filename: z.string().min(1),
+  file_description: z.string().optional(),
+  onedrive_file_url: z.string().url(),
+  file_size_bytes: z.number().optional(),
+  file_type: z.string().optional(),
+});
+
+// Schema for blocked days
+const BlockedDaySchema = z.object({
+  blocked_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().min(1),
+});
+
+// Schema for leave approval with admin override option
+const ApprovalSchema = z.object({
+  notes: z.string().optional(),
+  admin_override: z.boolean().optional(), // Allow admin to override blocked days
+});
+
 // Helper: Get user email from Cloudflare Access header or dev impersonation
 function getUserEmail(req: Request): string | null {
   const url = new URL(req.url);
@@ -55,6 +76,23 @@ function calculateDays(startDate: string, endDate: string): number {
   const diffTime = Math.abs(end.getTime() - start.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
   return diffDays;
+}
+
+// Helper: Get all dates in a range (inclusive)
+function getDatesInRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+}
+
+// Helper: Check if two date ranges overlap
+function dateRangesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
+  return start1 <= end2 && end1 >= start2;
 }
 
 // CORS helper
@@ -176,7 +214,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       });
     }
 
-    // Get pending requests for manager
+    // Get pending requests for manager (with conflict info)
     if (path === '/api/leave/pending' && method === 'GET') {
       const requests = await env.hr_dashboard_db.prepare(`
         SELECT lr.*, e.full_name, e.email 
@@ -186,7 +224,35 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         ORDER BY lr.created_at ASC
       `).bind(userEmail).all();
 
-      return new Response(JSON.stringify(requests.results), {
+      // For each request, find conflicts and blocked days
+      const requestsWithConflicts = await Promise.all(
+        (requests.results as any[]).map(async (req) => {
+          // Find conflicting approved leave
+          const conflicts = await env.hr_dashboard_db.prepare(`
+            SELECT lr.*, e.full_name, e.email
+            FROM leave_requests lr
+            JOIN employees e ON lr.employee_id = e.id
+            WHERE lr.status = 'approved'
+            AND lr.id != ?
+            AND lr.start_date <= ?
+            AND lr.end_date >= ?
+          `).bind(req.id, req.end_date, req.start_date).all();
+
+          // Find blocked days in range
+          const blockedDays = await env.hr_dashboard_db.prepare(`
+            SELECT * FROM blocked_days
+            WHERE blocked_date >= ? AND blocked_date <= ?
+          `).bind(req.start_date, req.end_date).all();
+
+          return {
+            ...req,
+            conflicts: conflicts.results,
+            blocked_days: blockedDays.results,
+          };
+        })
+      );
+
+      return new Response(JSON.stringify(requestsWithConflicts), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -204,7 +270,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const requestId = parseInt(match[1]);
       const action = match[2];
       const body = await req.json();
-      const notes = body.notes || '';
+      const validated = ApprovalSchema.parse(body);
+      const notes = validated.notes || '';
+      const adminOverride = validated.admin_override || false;
 
       // Check if user is manager for this request
       const request = await env.hr_dashboard_db.prepare(`
@@ -226,6 +294,29 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders() },
         });
+      }
+
+      // If approving, check for blocked days (unless admin override is set)
+      if (action === 'approve') {
+        const blockedDays = await env.hr_dashboard_db.prepare(`
+          SELECT * FROM blocked_days
+          WHERE blocked_date >= ? AND blocked_date <= ?
+        `).bind(request.start_date, request.end_date).all();
+
+        if (blockedDays.results && blockedDays.results.length > 0) {
+          // If not admin or admin override not set, reject the approval
+          if (!isAdmin || !adminOverride) {
+            const blockedDates = blockedDays.results.map((d: any) => `${d.blocked_date} (${d.reason})`).join(', ');
+            return new Response(JSON.stringify({ 
+              error: 'Cannot approve: blocked days in range',
+              blocked_days: blockedDays.results,
+              message: `The following days are blocked: ${blockedDates}. Only an admin can override this.`
+            }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+            });
+          }
+        }
       }
 
       const newStatus = action === 'approve' ? 'approved' : 'declined';
@@ -328,6 +419,256 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       `).all();
 
       return new Response(JSON.stringify(requests.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // ============================================================
+    // AGENT FILES ENDPOINTS (OneDrive Integration)
+    // ============================================================
+
+    // Get my files (agent can only see their own files)
+    if (path === '/api/files/my-files' && method === 'GET') {
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id, onedrive_folder_url FROM employees WHERE email = ?'
+      ).bind(userEmail).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const files = await env.hr_dashboard_db.prepare(
+        'SELECT * FROM agent_files WHERE employee_id = ? ORDER BY uploaded_at DESC'
+      ).bind(employee.id).all();
+
+      return new Response(JSON.stringify({
+        files: files.results,
+        onedrive_folder_url: employee.onedrive_folder_url,
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // Upload file metadata (agent uploads file to OneDrive, then registers it here)
+    if (path === '/api/files/upload' && method === 'POST') {
+      const body = await req.json();
+      const validated = AgentFileSchema.parse(body);
+
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id FROM employees WHERE email = ?'
+      ).bind(userEmail).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(
+        'INSERT INTO agent_files (employee_id, filename, file_description, onedrive_file_url, file_size_bytes, file_type) VALUES (?, ?, ?, ?, ?, ?)'
+      ).bind(
+        employee.id,
+        validated.filename,
+        validated.file_description || null,
+        validated.onedrive_file_url,
+        validated.file_size_bytes || null,
+        validated.file_type || null
+      ).run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // Delete file metadata (agent can only delete their own files)
+    if (path.startsWith('/api/files/') && method === 'DELETE') {
+      const match = path.match(/\/api\/files\/(\d+)/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const fileId = parseInt(match[1]);
+      
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id FROM employees WHERE email = ?'
+      ).bind(userEmail).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      // Verify the file belongs to this employee
+      const file = await env.hr_dashboard_db.prepare(
+        'SELECT * FROM agent_files WHERE id = ? AND employee_id = ?'
+      ).bind(fileId, employee.id).first();
+
+      if (!file) {
+        return new Response(JSON.stringify({ error: 'File not found or access denied' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(
+        'DELETE FROM agent_files WHERE id = ?'
+      ).bind(fileId).run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // ============================================================
+    // CONFLICTING LEAVE CHECK FOR MANAGER APPROVALS
+    // ============================================================
+
+    // Get conflicts for a specific leave request (check if other agents have approved leave on same days)
+    if (path.startsWith('/api/leave/') && path.endsWith('/conflicts') && method === 'GET') {
+      const match = path.match(/\/api\/leave\/(\d+)\/conflicts/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const requestId = parseInt(match[1]);
+
+      // Get the leave request details
+      const request = await env.hr_dashboard_db.prepare(`
+        SELECT lr.*, e.manager_email
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.id = ?
+      `).bind(requestId).first();
+
+      if (!request) {
+        return new Response(JSON.stringify({ error: 'Request not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      // Check if user is manager for this request or admin
+      if (request.manager_email !== userEmail && !isAdmin) {
+        return new Response(JSON.stringify({ error: 'Not authorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      // Find other approved leave requests that overlap with this date range
+      const conflicts = await env.hr_dashboard_db.prepare(`
+        SELECT lr.*, e.full_name, e.email
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.status = 'approved'
+        AND lr.id != ?
+        AND lr.start_date <= ?
+        AND lr.end_date >= ?
+      `).bind(requestId, request.end_date, request.start_date).all();
+
+      // Check for blocked days
+      const blockedDays = await env.hr_dashboard_db.prepare(`
+        SELECT * FROM blocked_days
+        WHERE blocked_date >= ? AND blocked_date <= ?
+      `).bind(request.start_date, request.end_date).all();
+
+      return new Response(JSON.stringify({
+        conflicting_leave: conflicts.results,
+        blocked_days: blockedDays.results,
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // ============================================================
+    // BLOCKED DAYS MANAGEMENT (Admin Only)
+    // ============================================================
+
+    // Get all blocked days
+    if (path === '/api/admin/blocked-days' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const blockedDays = await env.hr_dashboard_db.prepare(
+        'SELECT * FROM blocked_days ORDER BY blocked_date ASC'
+      ).all();
+
+      return new Response(JSON.stringify(blockedDays.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // Add blocked day
+    if (path === '/api/admin/blocked-days' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = BlockedDaySchema.parse(body);
+
+      try {
+        await env.hr_dashboard_db.prepare(
+          'INSERT INTO blocked_days (blocked_date, reason, created_by_email) VALUES (?, ?, ?)'
+        ).bind(validated.blocked_date, validated.reason, userEmail).run();
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      } catch (e: any) {
+        if (e.message.includes('UNIQUE constraint')) {
+          return new Response(JSON.stringify({ error: 'This date is already blocked' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+          });
+        }
+        throw e;
+      }
+    }
+
+    // Delete blocked day
+    if (path.startsWith('/api/admin/blocked-days/') && method === 'DELETE') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/\/api\/admin\/blocked-days\/(\d+)/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const blockedDayId = parseInt(match[1]);
+
+      await env.hr_dashboard_db.prepare(
+        'DELETE FROM blocked_days WHERE id = ?'
+      ).bind(blockedDayId).run();
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
