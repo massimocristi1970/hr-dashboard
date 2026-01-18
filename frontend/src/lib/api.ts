@@ -57,6 +57,12 @@ export const api = {
       body: JSON.stringify({ notes }),
     }),
 
+  cancelRequest: (id: number) =>
+    fetchAPI(`/api/leave/${id}/cancel`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
+
   getLeaveConflicts: (id: number) => fetchAPI(`/api/leave/${id}/conflicts`),
   
   // Agent files endpoints

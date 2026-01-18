@@ -39,6 +39,28 @@ export default function MyDashboard() {
   const approvedRequests = requests.filter(r => r.status === 'approved');
   const pendingRequests = requests.filter(r => r.status === 'pending');
   const declinedRequests = requests.filter(r => r.status === 'declined');
+  const cancelledRequests = requests.filter(r => r.status === 'cancelled');
+
+  // Check if a request can be cancelled
+  function canCancel(req: LeaveRequest): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    const isPending = req.status === 'pending';
+    const isPast = req.end_date < today;
+    return isPending || isPast;
+  }
+
+  async function handleCancel(id: number) {
+    if (!confirm('Are you sure you want to cancel this leave request?')) {
+      return;
+    }
+    try {
+      await api.cancelRequest(id);
+      alert('Leave request cancelled.');
+      loadRequests();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
 
   // Calculate total approved days
   const totalApprovedDays = approvedRequests.reduce((sum, r) => sum + r.days_requested, 0);
@@ -72,6 +94,12 @@ export default function MyDashboard() {
             <h3 style={{ margin: '0 0 0.5rem 0', color: '#fca5a5' }}>Declined</h3>
             <p style={{ margin: 0, fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.87)' }}>
               <strong>{declinedRequests.length}</strong> requests
+            </p>
+          </div>
+          <div>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#9ca3af' }}>Cancelled</h3>
+            <p style={{ margin: 0, fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.87)' }}>
+              <strong>{cancelledRequests.length}</strong> requests
             </p>
           </div>
         </div>
@@ -121,6 +149,7 @@ export default function MyDashboard() {
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Manager Notes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -136,6 +165,20 @@ export default function MyDashboard() {
                     </span>
                   </td>
                   <td>{req.manager_notes || '-'}</td>
+                  <td>
+                    {canCancel(req) && req.status !== 'cancelled' && (
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => handleCancel(req.id)}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    {req.status === 'cancelled' && (
+                      <span style={{ color: '#9ca3af' }}>Cancelled</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
