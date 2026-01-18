@@ -88,14 +88,15 @@ export default function MyFiles() {
       <h1 className="page-title">My Files</h1>
       
       {onedriveFolderUrl && (
-        <div className="card" style={{ marginBottom: '1rem', backgroundColor: '#e8f4fd' }}>
-          <h3 style={{ marginTop: 0 }}>Your OneDrive Folder</h3>
+        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+          <h3 style={{ marginTop: 0, color: '#93c5fd' }}>Your OneDrive Folder</h3>
           <p>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
           <a 
             href={onedriveFolderUrl} 
             target="_blank" 
             rel="noopener noreferrer"
             className="btn btn-primary"
+            style={{ marginTop: '0.5rem' }}
           >
             Open My OneDrive Folder
           </a>
@@ -103,8 +104,8 @@ export default function MyFiles() {
       )}
 
       {!onedriveFolderUrl && (
-        <div className="card" style={{ marginBottom: '1rem', backgroundColor: '#fff3cd', borderColor: '#ffc107' }}>
-          <p style={{ margin: 0 }}>
+        <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
+          <p>
             <strong>Note:</strong> You don't have a OneDrive folder URL configured yet. 
             Please contact HR Admin to set up your personal OneDrive folder.
           </p>
@@ -122,8 +123,8 @@ export default function MyFiles() {
         </button>
 
         {showAddForm && (
-          <form onSubmit={handleAddFile} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-            <p style={{ marginTop: 0, color: '#666' }}>
+          <form onSubmit={handleAddFile} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#2a2a2a', borderRadius: '8px', border: '1px solid #444' }}>
+            <p style={{ marginTop: 0, color: '#aaa' }}>
               After uploading a file to your OneDrive folder, register it here by providing the details below.
             </p>
             <div className="form-group">
@@ -145,7 +146,7 @@ export default function MyFiles() {
                 value={formData.onedrive_file_url}
                 onChange={(e) => setFormData({ ...formData, onedrive_file_url: e.target.value })}
               />
-              <small style={{ color: '#666' }}>
+              <small style={{ color: '#aaa' }}>
                 Right-click the file in OneDrive and select "Copy link" to get the URL
               </small>
             </div>

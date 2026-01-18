@@ -124,8 +124,8 @@ export default function ManagerApprovals() {
       <h1 className="page-title">Manager Approvals</h1>
       
       {userInfo?.isAdmin && (
-        <div className="card" style={{ marginBottom: '1rem', backgroundColor: '#e8f4fd' }}>
-          <p style={{ margin: 0 }}>
+        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+          <p>
             <strong>Admin Mode:</strong> You can override blocked days when approving leave requests.
           </p>
         </div>
@@ -166,14 +166,7 @@ export default function ManagerApprovals() {
                     <td>{req.reason || '-'}</td>
                     <td>
                       {hasConflicts && (
-                        <div style={{ 
-                          backgroundColor: '#fff3cd', 
-                          border: '1px solid #ffc107', 
-                          borderRadius: '4px', 
-                          padding: '0.5rem',
-                          marginBottom: hasBlockedDays ? '0.5rem' : 0,
-                          fontSize: '0.875rem'
-                        }}>
+                        <div className="conflict-box" style={{ marginBottom: hasBlockedDays ? '0.5rem' : 0 }}>
                           <strong>Conflict:</strong>
                           {req.conflicts.map(c => (
                             <div key={c.id}>
@@ -183,13 +176,7 @@ export default function ManagerApprovals() {
                         </div>
                       )}
                       {hasBlockedDays && (
-                        <div style={{ 
-                          backgroundColor: '#f8d7da', 
-                          border: '1px solid #dc3545', 
-                          borderRadius: '4px', 
-                          padding: '0.5rem',
-                          fontSize: '0.875rem'
-                        }}>
+                        <div className="blocked-box">
                           <strong>Blocked Days:</strong>
                           {req.blocked_days.map(b => (
                             <div key={b.id}>
@@ -199,7 +186,7 @@ export default function ManagerApprovals() {
                         </div>
                       )}
                       {!hasConflicts && !hasBlockedDays && (
-                        <span style={{ color: '#28a745' }}>None</span>
+                        <span style={{ color: '#86efac' }}>None</span>
                       )}
                     </td>
                     <td>

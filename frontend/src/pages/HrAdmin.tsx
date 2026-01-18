@@ -185,7 +185,7 @@ export default function HrAdmin() {
                   onChange={(e) => setFormData({ ...formData, onedrive_folder_url: e.target.value })}
                   placeholder="https://yourcompany-my.sharepoint.com/personal/..."
                 />
-                <small style={{ color: '#666' }}>
+                <small style={{ color: '#aaa' }}>
                   Each agent's personal OneDrive folder URL for file uploads
                 </small>
               </div>
@@ -237,7 +237,7 @@ export default function HrAdmin() {
       {activeTab === 'blocked-days' && (
         <div className="card">
           <h2>Blocked Days</h2>
-          <p style={{ color: '#666' }}>
+          <p style={{ color: '#aaa' }}>
             Block specific days to prevent leave requests from being approved on those dates. 
             As an admin, you can still override and approve leave on blocked days if needed.
           </p>
@@ -251,7 +251,7 @@ export default function HrAdmin() {
           </button>
 
           {showBlockedDayForm && (
-            <form onSubmit={handleAddBlockedDay} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+            <form onSubmit={handleAddBlockedDay} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#2a2a2a', borderRadius: '8px', border: '1px solid #444' }}>
               <div className="form-group">
                 <label>Date to Block</label>
                 <input

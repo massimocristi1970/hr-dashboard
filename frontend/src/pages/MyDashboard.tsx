@@ -48,23 +48,23 @@ export default function MyDashboard() {
       <h1 className="page-title">My Dashboard</h1>
       
       {/* Summary Card */}
-      <div className="card" style={{ marginBottom: '1rem', backgroundColor: '#e8f4fd' }}>
+      <div className="summary-card">
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div>
-            <h3 style={{ margin: 0, color: '#28a745' }}>Approved Leave</h3>
-            <p style={{ fontSize: '1.5rem', margin: '0.5rem 0' }}>
+            <h3 style={{ color: '#86efac' }}>Approved Leave</h3>
+            <p>
               <strong>{totalApprovedDays}</strong> days ({approvedRequests.length} requests)
             </p>
           </div>
           <div>
-            <h3 style={{ margin: 0, color: '#ffc107' }}>Pending</h3>
-            <p style={{ fontSize: '1.5rem', margin: '0.5rem 0' }}>
+            <h3 style={{ color: '#fcd34d' }}>Pending</h3>
+            <p>
               <strong>{pendingRequests.length}</strong> requests
             </p>
           </div>
           <div>
-            <h3 style={{ margin: 0, color: '#dc3545' }}>Declined</h3>
-            <p style={{ fontSize: '1.5rem', margin: '0.5rem 0' }}>
+            <h3 style={{ color: '#fca5a5' }}>Declined</h3>
+            <p>
               <strong>{declinedRequests.length}</strong> requests
             </p>
           </div>
