@@ -124,8 +124,15 @@ export default function ManagerApprovals() {
       <h1 className="page-title">Manager Approvals</h1>
       
       {userInfo?.isAdmin && (
-        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-          <p>
+        <div style={{ 
+          marginBottom: '1rem', 
+          padding: '1rem', 
+          borderRadius: '8px',
+          backgroundColor: '#1e3a5f',
+          border: '1px solid #3b82f6',
+          color: '#93c5fd'
+        }}>
+          <p style={{ margin: 0, color: '#93c5fd' }}>
             <strong>Admin Mode:</strong> You can override blocked days when approving leave requests.
           </p>
         </div>
@@ -166,20 +173,35 @@ export default function ManagerApprovals() {
                     <td>{req.reason || '-'}</td>
                     <td>
                       {hasConflicts && (
-                        <div className="conflict-box" style={{ marginBottom: hasBlockedDays ? '0.5rem' : 0 }}>
-                          <strong>Conflict:</strong>
+                        <div style={{ 
+                          backgroundColor: '#4a3f1a',
+                          border: '1px solid #f59e0b',
+                          color: '#fcd34d',
+                          borderRadius: '4px',
+                          padding: '0.5rem',
+                          marginBottom: hasBlockedDays ? '0.5rem' : 0,
+                          fontSize: '0.875rem'
+                        }}>
+                          <strong style={{ color: '#fcd34d' }}>Conflict:</strong>
                           {req.conflicts.map(c => (
-                            <div key={c.id}>
+                            <div key={c.id} style={{ color: '#fcd34d' }}>
                               {c.full_name}: {c.start_date} to {c.end_date}
                             </div>
                           ))}
                         </div>
                       )}
                       {hasBlockedDays && (
-                        <div className="blocked-box">
-                          <strong>Blocked Days:</strong>
+                        <div style={{ 
+                          backgroundColor: '#4a1a1a',
+                          border: '1px solid #dc2626',
+                          color: '#fca5a5',
+                          borderRadius: '4px',
+                          padding: '0.5rem',
+                          fontSize: '0.875rem'
+                        }}>
+                          <strong style={{ color: '#fca5a5' }}>Blocked Days:</strong>
                           {req.blocked_days.map(b => (
-                            <div key={b.id}>
+                            <div key={b.id} style={{ color: '#fca5a5' }}>
                               {b.blocked_date}: {b.reason}
                             </div>
                           ))}

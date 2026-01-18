@@ -88,9 +88,16 @@ export default function MyFiles() {
       <h1 className="page-title">My Files</h1>
       
       {onedriveFolderUrl && (
-        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+        <div style={{ 
+          marginBottom: '1rem', 
+          padding: '1rem', 
+          borderRadius: '8px',
+          backgroundColor: '#1e3a5f',
+          border: '1px solid #3b82f6',
+          color: '#93c5fd'
+        }}>
           <h3 style={{ marginTop: 0, color: '#93c5fd' }}>Your OneDrive Folder</h3>
-          <p>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
+          <p style={{ color: '#93c5fd' }}>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
           <a 
             href={onedriveFolderUrl} 
             target="_blank" 
@@ -104,8 +111,15 @@ export default function MyFiles() {
       )}
 
       {!onedriveFolderUrl && (
-        <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
-          <p>
+        <div style={{ 
+          marginBottom: '1rem', 
+          padding: '1rem', 
+          borderRadius: '8px',
+          backgroundColor: '#4a3f1a',
+          border: '1px solid #f59e0b',
+          color: '#fcd34d'
+        }}>
+          <p style={{ margin: 0, color: '#fcd34d' }}>
             <strong>Note:</strong> You don't have a OneDrive folder URL configured yet. 
             Please contact HR Admin to set up your personal OneDrive folder.
           </p>

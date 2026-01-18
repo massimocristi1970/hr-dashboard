@@ -48,23 +48,29 @@ export default function MyDashboard() {
       <h1 className="page-title">My Dashboard</h1>
       
       {/* Summary Card */}
-      <div className="summary-card">
+      <div style={{ 
+        backgroundColor: '#2a2a2a',
+        border: '1px solid #444',
+        borderRadius: '8px',
+        padding: '1rem',
+        marginBottom: '1rem'
+      }}>
         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
           <div>
-            <h3 style={{ color: '#86efac' }}>Approved Leave</h3>
-            <p>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#86efac' }}>Approved Leave</h3>
+            <p style={{ margin: 0, fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.87)' }}>
               <strong>{totalApprovedDays}</strong> days ({approvedRequests.length} requests)
             </p>
           </div>
           <div>
-            <h3 style={{ color: '#fcd34d' }}>Pending</h3>
-            <p>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#fcd34d' }}>Pending</h3>
+            <p style={{ margin: 0, fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.87)' }}>
               <strong>{pendingRequests.length}</strong> requests
             </p>
           </div>
           <div>
-            <h3 style={{ color: '#fca5a5' }}>Declined</h3>
-            <p>
+            <h3 style={{ margin: '0 0 0.5rem 0', color: '#fca5a5' }}>Declined</h3>
+            <p style={{ margin: 0, fontSize: '1.25rem', color: 'rgba(255, 255, 255, 0.87)' }}>
               <strong>{declinedRequests.length}</strong> requests
             </p>
           </div>
