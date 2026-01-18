@@ -17,6 +17,7 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
 
   const response = await fetch(url.toString(), {
     ...options,
+    credentials: 'omit', // Don't send cookies/credentials to avoid CORS issues
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
