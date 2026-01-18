@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import MyDashboard from './pages/MyDashboard';
 import RequestLeave from './pages/RequestLeave';
 import MyFiles from './pages/MyFiles';
@@ -7,6 +8,28 @@ import HrAdmin from './pages/HrAdmin';
 import './App.css';
 
 function App() {
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+
+  useEffect(() => {
+    const email = localStorage.getItem('dev_email');
+    setCurrentUser(email);
+  }, []);
+
+  function handleLogout() {
+    localStorage.removeItem('dev_email');
+    setCurrentUser(null);
+    window.location.reload();
+  }
+
+  function handleLogin() {
+    const email = prompt('Enter your email to login:');
+    if (email) {
+      localStorage.setItem('dev_email', email);
+      setCurrentUser(email);
+      window.location.reload();
+    }
+  }
+
   return (
     <BrowserRouter>
       <div className="app">
@@ -19,6 +42,47 @@ function App() {
             <li><Link to="/manager">Manager Approvals</Link></li>
             <li><Link to="/admin">HR Admin</Link></li>
           </ul>
+          <div style={{ marginTop: 'auto', paddingTop: '2rem', borderTop: '1px solid #333' }}>
+            {currentUser ? (
+              <>
+                <p style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '0.5rem' }}>
+                  Logged in as:
+                </p>
+                <p style={{ fontSize: '0.9rem', color: '#93c5fd', marginBottom: '1rem', wordBreak: 'break-all' }}>
+                  {currentUser}
+                </p>
+                <button 
+                  onClick={handleLogout}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    backgroundColor: '#4a1a1a',
+                    border: '1px solid #dc2626',
+                    color: '#fca5a5',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  backgroundColor: '#1e3a5f',
+                  border: '1px solid #3b82f6',
+                  color: '#93c5fd',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Login
+              </button>
+            )}
+          </div>
         </nav>
         <main className="main">
           <Routes>
