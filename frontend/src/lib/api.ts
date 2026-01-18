@@ -17,7 +17,7 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
 
   const response = await fetch(url.toString(), {
     ...options,
-    credentials: 'include', // Send Cloudflare Access cookies cross-origin
+    credentials: 'omit', // Don't send cookies/credentials to avoid CORS issues
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
