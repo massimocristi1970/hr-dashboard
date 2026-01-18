@@ -115,6 +115,11 @@
   color: white;
 }
 
+.status-cancelled {
+  background-color: #6b7280;
+  color: white;
+}
+
 .info-box {
   background-color: #2a2a2a;
   padding: 1rem;

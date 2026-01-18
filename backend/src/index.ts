@@ -179,6 +179,66 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       });
     }
 
+    // Cancel leave request (user can cancel their own pending requests or past requests)
+    if (path.match(/\/api\/leave\/\d+\/cancel/) && method === 'PUT') {
+      const match = path.match(/\/api\/leave\/(\d+)\/cancel/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const requestId = parseInt(match[1]);
+
+      // Get the leave request
+      const request = await env.hr_dashboard_db.prepare(`
+        SELECT lr.*, e.email as employee_email
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.id = ?
+      `).bind(requestId).first();
+
+      if (!request) {
+        return new Response(JSON.stringify({ error: 'Request not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      // Check if user owns this request
+      if (request.employee_email !== userEmail && !isAdmin) {
+        return new Response(JSON.stringify({ error: 'Not authorized to cancel this request' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      // Check if request can be cancelled:
+      // 1. Request is still pending, OR
+      // 2. The end date has passed (regardless of status)
+      const today = new Date().toISOString().split('T')[0];
+      const isPending = request.status === 'pending';
+      const isPast = request.end_date < today;
+
+      if (!isPending && !isPast) {
+        return new Response(JSON.stringify({ 
+          error: 'Cannot cancel: Request is already processed and dates have not passed yet' 
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(
+        'UPDATE leave_requests SET status = ?, updated_at = datetime("now") WHERE id = ?'
+      ).bind('cancelled', requestId).run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
     // Submit leave request
     if (path === '/api/leave/request' && method === 'POST') {
       const body = await req.json();
