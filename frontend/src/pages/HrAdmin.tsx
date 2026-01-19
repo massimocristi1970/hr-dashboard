@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 
+interface LeaveSummary {
+  year: number;
+  total_allowance: number;
+  annual_allowance: number;
+  carryover: number;
+  taken: number;
+  remaining: number;
+  entitlement_set: boolean;
+}
+
 interface Employee {
   id: number;
   email: string;
   full_name: string;
   manager_email: string;
   onedrive_folder_url: string;
+  leave_summary: LeaveSummary;
 }
 
 interface BlockedDay {
@@ -71,12 +82,23 @@ export default function HrAdmin() {
     }
   }
 
-  async function handleSetEntitlement(employeeId: number) {
-    const year = parseInt(prompt('Year (e.g., 2026):') || '');
-    const allowance = parseFloat(prompt('Annual allowance (days):') || '');
-    const carryover = parseFloat(prompt('Carryover days:') || '0');
+  async function handleSetEntitlement(employeeId: number, currentAllowance?: number, currentCarryover?: number) {
+    const currentYear = new Date().getFullYear();
+    const yearStr = prompt('Year:', currentYear.toString());
+    if (!yearStr) return;
+    const year = parseInt(yearStr);
+    
+    const allowanceStr = prompt('Annual allowance (days):', currentAllowance?.toString() || '28');
+    if (!allowanceStr) return;
+    const allowance = parseFloat(allowanceStr);
+    
+    const carryoverStr = prompt('Carryover days:', currentCarryover?.toString() || '0');
+    const carryover = parseFloat(carryoverStr || '0');
 
-    if (!year || !allowance) return;
+    if (!year || isNaN(allowance)) {
+      alert('Invalid input');
+      return;
+    }
 
     try {
       await api.setEntitlement({
@@ -86,6 +108,7 @@ export default function HrAdmin() {
         carryover_days: carryover,
       });
       alert('Entitlement set!');
+      loadData(); // Reload to show updated values
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -199,7 +222,8 @@ export default function HrAdmin() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Manager</th>
-                <th>OneDrive Folder</th>
+                <th style={{ textAlign: 'center' }}>Leave Allowance ({new Date().getFullYear()})</th>
+                <th>OneDrive</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -210,20 +234,50 @@ export default function HrAdmin() {
                   <td>{emp.email}</td>
                   <td>{emp.manager_email || '-'}</td>
                   <td>
+                    {emp.leave_summary?.entitlement_set ? (
+                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Total</div>
+                          <div style={{ fontWeight: 'bold', color: '#60a5fa' }}>{emp.leave_summary.total_allowance}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Taken</div>
+                          <div style={{ fontWeight: 'bold', color: '#f97316' }}>{emp.leave_summary.taken}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Left</div>
+                          <div style={{ 
+                            fontWeight: 'bold', 
+                            color: emp.leave_summary.remaining > 0 ? '#22c55e' : '#ef4444' 
+                          }}>
+                            {emp.leave_summary.remaining}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#f59e0b' }}>Not set</span>
+                    )}
+                  </td>
+                  <td>
                     {emp.onedrive_folder_url ? (
                       <a href={emp.onedrive_folder_url} target="_blank" rel="noopener noreferrer">
-                        View Folder
+                        Open
                       </a>
                     ) : (
-                      <span style={{ color: '#dc3545' }}>Not configured</span>
+                      <span style={{ color: '#6b7280' }}>-</span>
                     )}
                   </td>
                   <td>
                     <button
                       className="btn"
-                      onClick={() => handleSetEntitlement(emp.id)}
+                      onClick={() => handleSetEntitlement(
+                        emp.id, 
+                        emp.leave_summary?.annual_allowance, 
+                        emp.leave_summary?.carryover
+                      )}
+                      style={{ fontSize: '0.875rem', padding: '0.25rem 0.5rem' }}
                     >
-                      Set Entitlement
+                      {emp.leave_summary?.entitlement_set ? 'Edit' : 'Set'} Entitlement
                     </button>
                   </td>
                 </tr>

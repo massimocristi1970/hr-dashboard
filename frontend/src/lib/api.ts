@@ -37,7 +37,13 @@ export const api = {
   
   getMyRequests: () => fetchAPI('/api/leave/my-requests'),
   
-  submitLeaveRequest: (data: { start_date: string; end_date: string; reason?: string }) =>
+  submitLeaveRequest: (data: { 
+    start_date: string; 
+    end_date: string; 
+    reason?: string;
+    start_half_day?: 'full' | 'am' | 'pm';
+    end_half_day?: 'full' | 'am' | 'pm';
+  }) =>
     fetchAPI('/api/leave/request', {
       method: 'POST',
       body: JSON.stringify(data),

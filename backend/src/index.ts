@@ -21,6 +21,8 @@ const LeaveRequestSchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().optional(),
+  start_half_day: z.enum(['full', 'am', 'pm']).optional(), // 'full' = whole day, 'am' = morning only, 'pm' = afternoon only
+  end_half_day: z.enum(['full', 'am', 'pm']).optional(),
 });
 
 const LeaveEntitlementSchema = z.object({
@@ -69,13 +71,40 @@ function isHrAdmin(email: string, env: Env): boolean {
   return adminEmails.includes(email.toLowerCase());
 }
 
-// Helper: Calculate business days between two dates (simple version)
-function calculateDays(startDate: string, endDate: string): number {
+// Helper: Calculate days between two dates with half day support
+function calculateDays(
+  startDate: string, 
+  endDate: string, 
+  startHalfDay: 'full' | 'am' | 'pm' = 'full',
+  endHalfDay: 'full' | 'am' | 'pm' = 'full'
+): number {
   const start = new Date(startDate);
   const end = new Date(endDate);
   const diffTime = Math.abs(end.getTime() - start.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
-  return diffDays;
+  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+  
+  // If same day
+  if (startDate === endDate) {
+    if (startHalfDay === 'full' && endHalfDay === 'full') return 1;
+    if (startHalfDay === 'am' || startHalfDay === 'pm') return 0.5;
+    if (endHalfDay === 'am' || endHalfDay === 'pm') return 0.5;
+    return 1;
+  }
+  
+  // Calculate adjustments for half days
+  let adjustment = 0;
+  
+  // If start day is half day (pm only = start afternoon, so morning is worked)
+  if (startHalfDay === 'pm') {
+    adjustment -= 0.5;
+  }
+  
+  // If end day is half day (am only = end at lunch, so afternoon is worked)
+  if (endHalfDay === 'am') {
+    adjustment -= 0.5;
+  }
+  
+  return wholeDays + adjustment;
 }
 
 // Helper: Get all dates in a range (inclusive)
@@ -198,7 +227,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
-      `).bind(requestId).first();
+      `).bind(requestId).first() as { status: string; end_date: string; employee_email: string } | null;
 
       if (!request) {
         return new Response(JSON.stringify({ error: 'Request not found' }), {
@@ -256,20 +285,24 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      const days = calculateDays(validated.start_date, validated.end_date);
+      const startHalfDay = validated.start_half_day || 'full';
+      const endHalfDay = validated.end_half_day || 'full';
+      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
 
       await env.hr_dashboard_db.prepare(
-        'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status, start_half_day, end_half_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         employee.id,
         validated.start_date,
         validated.end_date,
         days,
         validated.reason || '',
-        'pending'
+        'pending',
+        startHalfDay,
+        endHalfDay
       ).run();
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({ success: true, days_requested: days }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -390,7 +423,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       });
     }
 
-    // HR Admin: Get all employees
+    // HR Admin: Get all employees with leave summaries
     if (path === '/api/admin/employees' && method === 'GET') {
       if (!isAdmin) {
         return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -399,8 +432,63 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
+      const currentYear = new Date().getFullYear();
+      
+      // Get all employees with their entitlements and taken leave for current year
       const employees = await env.hr_dashboard_db.prepare('SELECT * FROM employees ORDER BY full_name').all();
-      return new Response(JSON.stringify(employees.results), {
+      
+      // Get entitlements for current year
+      const entitlements = await env.hr_dashboard_db.prepare(`
+        SELECT employee_id, annual_allowance_days, carryover_days 
+        FROM leave_entitlements 
+        WHERE year = ?
+      `).bind(currentYear).all();
+      
+      // Get approved leave days for current year
+      const approvedLeave = await env.hr_dashboard_db.prepare(`
+        SELECT employee_id, SUM(days_requested) as total_taken
+        FROM leave_requests 
+        WHERE status = 'approved' 
+        AND strftime('%Y', start_date) = ?
+        GROUP BY employee_id
+      `).bind(currentYear.toString()).all();
+      
+      // Build lookup maps
+      const entitlementMap = new Map<number, { allowance: number; carryover: number }>();
+      (entitlements.results as any[]).forEach((e: any) => {
+        entitlementMap.set(e.employee_id, {
+          allowance: e.annual_allowance_days,
+          carryover: e.carryover_days
+        });
+      });
+      
+      const takenMap = new Map<number, number>();
+      (approvedLeave.results as any[]).forEach((l: any) => {
+        takenMap.set(l.employee_id, l.total_taken || 0);
+      });
+      
+      // Combine data
+      const employeesWithLeave = (employees.results as any[]).map((emp: any) => {
+        const entitlement = entitlementMap.get(emp.id);
+        const taken = takenMap.get(emp.id) || 0;
+        const total = entitlement ? entitlement.allowance + entitlement.carryover : 0;
+        const remaining = total - taken;
+        
+        return {
+          ...emp,
+          leave_summary: {
+            year: currentYear,
+            total_allowance: total,
+            annual_allowance: entitlement?.allowance || 0,
+            carryover: entitlement?.carryover || 0,
+            taken: taken,
+            remaining: remaining,
+            entitlement_set: !!entitlement
+          }
+        };
+      });
+      
+      return new Response(JSON.stringify(employeesWithLeave), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
