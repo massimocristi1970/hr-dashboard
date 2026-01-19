@@ -85,26 +85,22 @@ function calculateDays(
   
   // If same day
   if (startDate === endDate) {
-    if (startHalfDay === 'full' && endHalfDay === 'full') return 1;
-    if (startHalfDay === 'am' || startHalfDay === 'pm') return 0.5;
-    if (endHalfDay === 'am' || endHalfDay === 'pm') return 0.5;
-    return 1;
+    if (startHalfDay === 'full') return 1;
+    return 0.5; // AM or PM = half day
   }
   
-  // Calculate adjustments for half days
+  // Multiple days - adjust for half days
   let adjustment = 0;
   
-  // If start day is half day (pm only = start afternoon, so morning is worked)
-  if (startHalfDay === 'pm') {
-    adjustment -= 0.5;
-  }
+  // Start day adjustment
+  if (startHalfDay === 'am') adjustment -= 0.5; // Only taking morning of first day
+  if (startHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of first day
   
-  // If end day is half day (am only = end at lunch, so afternoon is worked)
-  if (endHalfDay === 'am') {
-    adjustment -= 0.5;
-  }
+  // End day adjustment  
+  if (endHalfDay === 'am') adjustment -= 0.5; // Only taking morning of last day
+  if (endHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of last day
   
-  return wholeDays + adjustment;
+  return Math.max(0.5, wholeDays + adjustment);
 }
 
 // Helper: Get all dates in a range (inclusive)

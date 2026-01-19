@@ -19,14 +19,21 @@ function calculateDaysPreview(
   // If same day
   if (startDate === endDate) {
     if (startHalfDay === 'full') return 1;
-    return 0.5;
+    return 0.5; // AM or PM = half day
   }
   
+  // Multiple days - adjust for half days
   let adjustment = 0;
-  if (startHalfDay === 'pm') adjustment -= 0.5;
-  if (endHalfDay === 'am') adjustment -= 0.5;
   
-  return wholeDays + adjustment;
+  // Start day adjustment
+  if (startHalfDay === 'am') adjustment -= 0.5; // Only taking morning of first day
+  if (startHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of first day
+  
+  // End day adjustment  
+  if (endHalfDay === 'am') adjustment -= 0.5; // Only taking morning of last day
+  if (endHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of last day
+  
+  return Math.max(0.5, wholeDays + adjustment);
 }
 
 export default function RequestLeave() {
@@ -52,9 +59,6 @@ export default function RequestLeave() {
     );
     setDaysPreview(days);
   }, [formData.start_date, formData.end_date, formData.start_half_day, formData.end_half_day]);
-
-  // Check if it's a single day request
-  const isSingleDay = !!(formData.start_date && formData.start_date === formData.end_date);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,7 +107,8 @@ export default function RequestLeave() {
                 style={{ width: '100%' }}
               >
                 <option value="full">Full Day</option>
-                <option value="pm">Half Day (PM only - start afternoon)</option>
+                <option value="am">AM Only (morning)</option>
+                <option value="pm">PM Only (afternoon)</option>
               </select>
             </div>
 
@@ -126,16 +131,11 @@ export default function RequestLeave() {
                 value={formData.end_half_day}
                 onChange={(e) => setFormData({ ...formData, end_half_day: e.target.value as 'full' | 'am' | 'pm' })}
                 style={{ width: '100%' }}
-                disabled={isSingleDay} // Disable if single day (use start_half_day instead)
               >
                 <option value="full">Full Day</option>
-                <option value="am">Half Day (AM only - end at lunch)</option>
+                <option value="am">AM Only (morning)</option>
+                <option value="pm">PM Only (afternoon)</option>
               </select>
-              {isSingleDay && (
-                <small style={{ color: '#aaa' }}>
-                  For single day, use Start Day Type to select half day
-                </small>
-              )}
             </div>
           </div>
 
