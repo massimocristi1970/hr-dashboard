@@ -42,11 +42,12 @@ export default function MyDashboard() {
   const cancelledRequests = requests.filter(r => r.status === 'cancelled');
 
   // Check if a request can be cancelled
+  // Can cancel if: pending or approved AND leave hasn't started yet
   function canCancel(req: LeaveRequest): boolean {
     const today = new Date().toISOString().split('T')[0];
-    const isPending = req.status === 'pending';
-    const isPast = req.end_date < today;
-    return isPending || isPast;
+    const canCancelStatus = req.status === 'pending' || req.status === 'approved';
+    const hasStarted = req.start_date <= today;
+    return canCancelStatus && !hasStarted;
   }
 
   async function handleCancel(id: number) {

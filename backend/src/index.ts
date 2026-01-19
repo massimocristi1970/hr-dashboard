@@ -223,7 +223,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
-      `).bind(requestId).first() as { status: string; end_date: string; employee_email: string } | null;
+      `).bind(requestId).first() as { status: string; start_date: string; employee_email: string } | null;
 
       if (!request) {
         return new Response(JSON.stringify({ error: 'Request not found' }), {
@@ -241,15 +241,24 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       // Check if request can be cancelled:
-      // 1. Request is still pending, OR
-      // 2. The end date has passed (regardless of status)
+      // - Status must be 'pending' or 'approved'
+      // - Start date must not have passed yet
       const today = new Date().toISOString().split('T')[0];
-      const isPending = request.status === 'pending';
-      const isPast = request.end_date < today;
+      const canCancel = (request.status === 'pending' || request.status === 'approved');
+      const hasStarted = request.start_date <= today;
 
-      if (!isPending && !isPast) {
+      if (!canCancel) {
         return new Response(JSON.stringify({ 
-          error: 'Cannot cancel: Request is already processed and dates have not passed yet' 
+          error: 'Cannot cancel: Request has already been declined or cancelled' 
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      if (hasStarted) {
+        return new Response(JSON.stringify({ 
+          error: 'Cannot cancel: Leave has already started or passed' 
         }), {
           status: 400,
           headers: { 'Content-Type': 'application/json', ...corsHeaders() },
