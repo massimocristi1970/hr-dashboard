@@ -5,6 +5,7 @@ import RequestLeave from './pages/RequestLeave';
 import MyFiles from './pages/MyFiles';
 import ManagerApprovals from './pages/ManagerApprovals';
 import HrAdmin from './pages/HrAdmin';
+import AdminLeaveCalendar from './pages/AdminLeaveCalendar';
 import './App.css';
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
             <li><Link to="/my-files">My Files</Link></li>
             <li><Link to="/manager">Manager Approvals</Link></li>
             <li><Link to="/admin">HR Admin</Link></li>
+            <li><Link to="/leave-calendar">Leave Calendar</Link></li>
           </ul>
           <div style={{ marginTop: 'auto', paddingTop: '2rem', borderTop: '1px solid #333' }}>
             {currentUser ? (
@@ -91,6 +93,7 @@ function App() {
             <Route path="/my-files" element={<MyFiles />} />
             <Route path="/manager" element={<ManagerApprovals />} />
             <Route path="/admin" element={<HrAdmin />} />
+            <Route path="/leave-calendar" element={<AdminLeaveCalendar />} />
           </Routes>
         </main>
       </div>
