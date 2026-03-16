@@ -41,6 +41,7 @@ export default function RequestLeave() {
   const [formData, setFormData] = useState({
     start_date: '',
     end_date: '',
+    leave_type: 'annual' as 'annual' | 'unpaid' | 'sick',
     reason: '',
     start_half_day: 'full' as 'full' | 'am' | 'pm',
     end_half_day: 'full' as 'full' | 'am' | 'pm',
@@ -75,6 +76,12 @@ export default function RequestLeave() {
       setSubmitting(false);
     }
   }
+
+  const leaveTypeCopy = {
+    annual: 'Deducted from the employee annual leave balance once approved.',
+    unpaid: 'Logged as leave taken, but not deducted from annual leave entitlement.',
+    sick: 'Logged separately as sick leave and not deducted from annual leave entitlement.',
+  } as const;
 
   return (
     <div className="page-frame">
@@ -161,6 +168,20 @@ export default function RequestLeave() {
               {daysPreview % 1 !== 0 && <span> (includes half day)</span>}
             </div>
           )}
+
+          <div className="form-group" style={{ maxWidth: '760px' }}>
+            <label htmlFor="leave_type">Leave Type</label>
+            <select
+              id="leave_type"
+              value={formData.leave_type}
+              onChange={(e) => setFormData({ ...formData, leave_type: e.target.value as 'annual' | 'unpaid' | 'sick' })}
+            >
+              <option value="annual">Annual Leave</option>
+              <option value="unpaid">Unpaid Leave</option>
+              <option value="sick">Sick Leave</option>
+            </select>
+            <small className="form-help">{leaveTypeCopy[formData.leave_type]}</small>
+          </div>
 
           <div className="form-group" style={{ maxWidth: '760px' }}>
             <label htmlFor="reason">Reason (Optional)</label>

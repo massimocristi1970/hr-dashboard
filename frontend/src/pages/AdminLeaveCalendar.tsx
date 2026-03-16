@@ -7,6 +7,7 @@ interface LeaveRequest {
   start_date: string;
   end_date: string;
   days_requested: number;
+  leave_type: 'annual' | 'unpaid' | 'sick';
   reason: string;
   status: string;
   full_name: string;
@@ -179,6 +180,12 @@ export default function AdminLeaveCalendar() {
     };
   });
 
+  function formatLeaveType(type: LeaveRequest['leave_type']) {
+    if (type === 'annual') return 'Annual Leave';
+    if (type === 'unpaid') return 'Unpaid Leave';
+    return 'Sick Leave';
+  }
+
   return (
     <div className="page-frame">
       <section className="hero-card">
@@ -327,6 +334,7 @@ export default function AdminLeaveCalendar() {
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Days</th>
+                  <th>Type</th>
                   <th>Reason</th>
                 </tr>
               </thead>
@@ -345,6 +353,7 @@ export default function AdminLeaveCalendar() {
                       <td>{req.start_date}</td>
                       <td>{req.end_date}</td>
                       <td>{req.days_requested}</td>
+                      <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
                       <td>{req.reason || '-'}</td>
                     </tr>
                   ))}

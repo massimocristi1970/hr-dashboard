@@ -41,6 +41,7 @@ export const api = {
     start_date: string; 
     end_date: string; 
     reason?: string;
+    leave_type: 'annual' | 'unpaid' | 'sick';
     start_half_day?: 'full' | 'am' | 'pm';
     end_half_day?: 'full' | 'am' | 'pm';
   }) =>

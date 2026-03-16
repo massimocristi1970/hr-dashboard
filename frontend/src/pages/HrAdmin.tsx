@@ -7,6 +7,8 @@ interface LeaveSummary {
   annual_allowance: number;
   carryover: number;
   taken: number;
+  unpaid_taken: number;
+  sick_taken: number;
   remaining: number;
   entitlement_set: boolean;
 }
@@ -263,7 +265,9 @@ export default function HrAdmin() {
                       {emp.leave_summary?.entitlement_set ? (
                         <div className="inline-actions">
                           <span className="status-badge status-neutral">Total {emp.leave_summary.total_allowance}</span>
-                          <span className="status-badge status-pending">Taken {emp.leave_summary.taken}</span>
+                          <span className="status-badge status-pending">Annual Used {emp.leave_summary.taken}</span>
+                          <span className="status-badge status-neutral">Unpaid {emp.leave_summary.unpaid_taken}</span>
+                          <span className="status-badge status-neutral">Sick {emp.leave_summary.sick_taken}</span>
                           <span className={`status-badge ${emp.leave_summary.remaining > 0 ? 'status-approved' : 'status-declined'}`}>
                             Left {emp.leave_summary.remaining}
                           </span>

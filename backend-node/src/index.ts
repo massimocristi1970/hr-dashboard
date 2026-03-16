@@ -51,6 +51,7 @@ db.exec(`
     end_date TEXT NOT NULL,
     days_requested REAL NOT NULL,
     reason TEXT,
+    leave_type TEXT NOT NULL DEFAULT 'annual',
     status TEXT NOT NULL DEFAULT 'pending',
     manager_notes TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -83,6 +84,7 @@ const LeaveRequestSchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().optional(),
+  leave_type: z.enum(['annual', 'unpaid', 'sick']),
 });
 
 const LeaveEntitlementSchema = z.object({
@@ -183,13 +185,14 @@ app.post('/api/leave/request', requireAuth, (req, res) => {
   const days = calculateDays(validated.start_date, validated.end_date);
   
   db.prepare(
-    'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, leave_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).run(
     employee.id,
     validated.start_date,
     validated.end_date,
     days,
     validated.reason || '',
+    validated.leave_type,
     'pending'
   );
   

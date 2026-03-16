@@ -6,6 +6,7 @@ interface LeaveRequest {
   start_date: string;
   end_date: string;
   days_requested: number;
+  leave_type: 'annual' | 'unpaid' | 'sick';
   reason: string;
   status: string;
   manager_notes: string;
@@ -37,6 +38,15 @@ export default function MyDashboard() {
   if (error) return <div className="error-state">Error: {error}</div>;
 
   const approvedRequests = requests.filter(r => r.status === 'approved');
+  const approvedAnnualDays = approvedRequests
+    .filter((r) => r.leave_type === 'annual')
+    .reduce((sum, r) => sum + r.days_requested, 0);
+  const approvedUnpaidDays = approvedRequests
+    .filter((r) => r.leave_type === 'unpaid')
+    .reduce((sum, r) => sum + r.days_requested, 0);
+  const approvedSickDays = approvedRequests
+    .filter((r) => r.leave_type === 'sick')
+    .reduce((sum, r) => sum + r.days_requested, 0);
   const pendingRequests = requests.filter(r => r.status === 'pending');
   const declinedRequests = requests.filter(r => r.status === 'declined');
   const cancelledRequests = requests.filter(r => r.status === 'cancelled');
@@ -65,6 +75,12 @@ export default function MyDashboard() {
 
   // Calculate total approved days
   const totalApprovedDays = approvedRequests.reduce((sum, r) => sum + r.days_requested, 0);
+
+  function formatLeaveType(type: LeaveRequest['leave_type']) {
+    if (type === 'annual') return 'Annual Leave';
+    if (type === 'unpaid') return 'Unpaid Leave';
+    return 'Sick Leave';
+  }
 
   return (
     <div className="page-frame">
@@ -112,6 +128,16 @@ export default function MyDashboard() {
           <div className="summary-value summary-value--muted">{cancelledRequests.length}</div>
           <p className="muted-text">Closed out by you</p>
         </div>
+        <div className="summary-card">
+          <span className="summary-label">Approved Annual</span>
+          <div className="summary-value summary-value--primary">{approvedAnnualDays}</div>
+          <p className="muted-text">Counts against annual entitlement</p>
+        </div>
+        <div className="summary-card">
+          <span className="summary-label">Unpaid / Sick</span>
+          <div className="summary-value summary-value--muted">{approvedUnpaidDays + approvedSickDays}</div>
+          <p className="muted-text">{approvedUnpaidDays} unpaid and {approvedSickDays} sick days</p>
+        </div>
       </section>
 
       {approvedRequests.length > 0 && (
@@ -129,6 +155,7 @@ export default function MyDashboard() {
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Days</th>
+                  <th>Type</th>
                   <th>Reason</th>
                   <th>Manager Notes</th>
                 </tr>
@@ -139,6 +166,7 @@ export default function MyDashboard() {
                     <td>{req.start_date}</td>
                     <td>{req.end_date}</td>
                     <td>{req.days_requested}</td>
+                    <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
                     <td>{req.reason || '-'}</td>
                     <td>{req.manager_notes || '-'}</td>
                   </tr>
@@ -166,6 +194,7 @@ export default function MyDashboard() {
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Days</th>
+                  <th>Type</th>
                   <th>Reason</th>
                   <th>Status</th>
                   <th>Manager Notes</th>
@@ -178,6 +207,7 @@ export default function MyDashboard() {
                     <td>{req.start_date}</td>
                     <td>{req.end_date}</td>
                     <td>{req.days_requested}</td>
+                    <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
                     <td>{req.reason || '-'}</td>
                     <td>
                       <span className={`status-badge status-${req.status}`}>

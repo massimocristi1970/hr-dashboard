@@ -23,6 +23,7 @@ interface PendingRequest {
   start_date: string;
   end_date: string;
   days_requested: number;
+  leave_type: 'annual' | 'unpaid' | 'sick';
   reason: string;
   created_at: string;
   conflicts: ConflictingLeave[];
@@ -119,6 +120,12 @@ export default function ManagerApprovals() {
   if (loading) return <div className="loading-state">Loading approval queue...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
+  function formatLeaveType(type: PendingRequest['leave_type']) {
+    if (type === 'annual') return 'Annual Leave';
+    if (type === 'unpaid') return 'Unpaid Leave';
+    return 'Sick Leave';
+  }
+
   return (
     <div className="page-frame">
       <section className="hero-card">
@@ -166,6 +173,7 @@ export default function ManagerApprovals() {
                   <th>Start Date</th>
                   <th>End Date</th>
                   <th>Days</th>
+                  <th>Type</th>
                   <th>Reason</th>
                   <th>Warnings</th>
                   <th>Actions</th>
@@ -186,6 +194,7 @@ export default function ManagerApprovals() {
                       <td>{req.start_date}</td>
                       <td>{req.end_date}</td>
                       <td>{req.days_requested}</td>
+                      <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
                       <td>{req.reason || '-'}</td>
                       <td>
                         <div className="stack">

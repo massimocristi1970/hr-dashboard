@@ -21,6 +21,7 @@ const LeaveRequestSchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().optional(),
+  leave_type: z.enum(['annual', 'unpaid', 'sick']),
   start_half_day: z.enum(['full', 'am', 'pm']).optional(), // 'full' = whole day, 'am' = morning only, 'pm' = afternoon only
   end_half_day: z.enum(['full', 'am', 'pm']).optional(),
 });
@@ -295,7 +296,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
 
       await env.hr_dashboard_db.prepare(
-        'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status, start_half_day, end_half_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status, leave_type, start_half_day, end_half_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(
         employee.id,
         validated.start_date,
@@ -303,6 +304,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         days,
         validated.reason || '',
         'pending',
+        validated.leave_type,
         startHalfDay,
         endHalfDay
       ).run();
@@ -451,7 +453,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       
       // Get approved leave days for current year
       const approvedLeave = await env.hr_dashboard_db.prepare(`
-        SELECT employee_id, SUM(days_requested) as total_taken
+        SELECT employee_id,
+               SUM(CASE WHEN leave_type = 'annual' THEN days_requested ELSE 0 END) as annual_taken,
+               SUM(CASE WHEN leave_type = 'unpaid' THEN days_requested ELSE 0 END) as unpaid_taken,
+               SUM(CASE WHEN leave_type = 'sick' THEN days_requested ELSE 0 END) as sick_taken
         FROM leave_requests 
         WHERE status = 'approved' 
         AND strftime('%Y', start_date) = ?
@@ -467,17 +472,21 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       });
       
-      const takenMap = new Map<number, number>();
+      const takenMap = new Map<number, { annual: number; unpaid: number; sick: number }>();
       (approvedLeave.results as any[]).forEach((l: any) => {
-        takenMap.set(l.employee_id, l.total_taken || 0);
+        takenMap.set(l.employee_id, {
+          annual: l.annual_taken || 0,
+          unpaid: l.unpaid_taken || 0,
+          sick: l.sick_taken || 0,
+        });
       });
       
       // Combine data
       const employeesWithLeave = (employees.results as any[]).map((emp: any) => {
         const entitlement = entitlementMap.get(emp.id);
-        const taken = takenMap.get(emp.id) || 0;
+        const taken = takenMap.get(emp.id) || { annual: 0, unpaid: 0, sick: 0 };
         const total = entitlement ? entitlement.allowance + entitlement.carryover : 0;
-        const remaining = total - taken;
+        const remaining = total - taken.annual;
         
         return {
           ...emp,
@@ -486,7 +495,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
             total_allowance: total,
             annual_allowance: entitlement?.allowance || 0,
             carryover: entitlement?.carryover || 0,
-            taken: taken,
+            taken: taken.annual,
+            unpaid_taken: taken.unpaid,
+            sick_taken: taken.sick,
             remaining: remaining,
             entitlement_set: !!entitlement
           }
