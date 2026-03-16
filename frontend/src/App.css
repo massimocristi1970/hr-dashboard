@@ -416,16 +416,19 @@
 
 .summary-label {
   display: block;
-  color: var(--color-muted);
+  color: #f4f8fc;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
+  font-weight: 700;
 }
 
 .summary-value {
   font-size: 1.8rem;
   font-weight: 700;
+  opacity: 1;
+  text-shadow: none;
 }
 
 .summary-value--success {
@@ -445,7 +448,11 @@
 }
 
 .summary-value--muted {
-  color: var(--color-muted-strong);
+  color: #eef4fb;
+}
+
+.summary-card .muted-text {
+  color: rgba(244, 248, 252, 0.88);
 }
 
 .table-card {
