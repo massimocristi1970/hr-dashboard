@@ -159,8 +159,8 @@ export default function AdminLeaveCalendar() {
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <div className="loading-state">Loading leave calendar...</div>;
+  if (error) return <div className="error-state">Error: {error}</div>;
 
   const leaveMap = buildLeaveMap();
   const calendarWeeks = getCalendarDays();
@@ -180,18 +180,37 @@ export default function AdminLeaveCalendar() {
   });
 
   return (
-    <div>
-      <h1 className="page-title">Leave Calendar</h1>
-      
-      {/* Filter Controls */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <div>
-            <label style={{ marginRight: '0.5rem' }}>Filter by Employee:</label>
+    <div className="page-frame">
+      <section className="hero-card">
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Shared Leave Visibility</p>
+            <h1>Leave Calendar</h1>
+            <p>
+              Review approved leave across the team with cleaner monthly views,
+              employee filtering, and summary metrics.
+            </p>
+          </div>
+          <div className="hero-metrics">
+            <div className="metric-card">
+              <span className="metric-label">Approved Requests</span>
+              <span className="metric-value">{leaveRequests.length}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Employees</span>
+              <span className="metric-value">{employeesWithLeave.length}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="calendar-toolbar">
+          <div className="form-group" style={{ minWidth: '240px', marginBottom: 0 }}>
+            <label>Filter by Employee</label>
             <select
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
-              style={{ padding: '0.5rem', minWidth: '200px' }}
             >
               <option value="all">All Employees</option>
               {employeesWithLeave.map(emp => (
@@ -202,29 +221,24 @@ export default function AdminLeaveCalendar() {
             </select>
           </div>
           
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
-            <button className="btn" onClick={previousMonth}>&lt; Prev</button>
-            <button className="btn btn-primary" onClick={goToToday}>Today</button>
-            <button className="btn" onClick={nextMonth}>Next &gt;</button>
+          <div className="inline-actions" style={{ marginLeft: 'auto' }}>
+            <button className="btn btn-secondary" onClick={previousMonth}>&lt; Prev</button>
+            <button className="btn" onClick={goToToday}>Today</button>
+            <button className="btn btn-secondary" onClick={nextMonth}>Next &gt;</button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Calendar Header */}
-      <div className="card">
+      <section className="card">
         <h2 style={{ textAlign: 'center', marginBottom: '1rem' }}>
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </h2>
-        
-        {/* Day Names Header */}
         <div className="calendar-grid">
           {dayNames.map(day => (
             <div key={day} className="calendar-header-cell">
               {day}
             </div>
           ))}
-          
-          {/* Calendar Days */}
           {calendarWeeks.map((week, weekIndex) => (
             week.map((day, dayIndex) => {
               if (!day) {
@@ -259,47 +273,38 @@ export default function AdminLeaveCalendar() {
             })
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Legend */}
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <section className="card">
         <h3>Legend</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '0.5rem' }}>
+        <div className="legend-grid" style={{ marginTop: '0.5rem' }}>
           {employeesWithLeave.map(emp => (
-            <div key={emp.email} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div 
-                style={{ 
-                  width: '16px', 
-                  height: '16px', 
-                  borderRadius: '4px', 
-                  backgroundColor: getEmployeeColor(emp.employee_id) 
-                }} 
-              />
+            <div key={emp.email} className="legend-item">
+              <div className="legend-swatch" style={{ backgroundColor: getEmployeeColor(emp.employee_id) }} />
               <span>{emp.full_name}</span>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Summary Statistics */}
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <section className="card">
         <h3>Summary</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+        <div className="summary-grid" style={{ marginTop: '0.5rem' }}>
           <div className="summary-card">
-            <h4 style={{ margin: 0, color: '#aaa' }}>Total Approved Leave</h4>
-            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0.5rem 0 0' }}>
+            <span className="summary-label">Total Approved Leave</span>
+            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
               {leaveRequests.length} requests
             </p>
           </div>
           <div className="summary-card">
-            <h4 style={{ margin: 0, color: '#aaa' }}>Employees with Leave</h4>
-            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0.5rem 0 0' }}>
+            <span className="summary-label">Employees with Leave</span>
+            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
               {employeesWithLeave.length} employees
             </p>
           </div>
           <div className="summary-card">
-            <h4 style={{ margin: 0, color: '#aaa' }}>Total Days This Month</h4>
-            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0.5rem 0 0' }}>
+            <span className="summary-label">Total Days This Month</span>
+            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
               {Array.from(leaveMap.keys()).filter(date => {
                 const d = new Date(date);
                 return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
@@ -307,54 +312,47 @@ export default function AdminLeaveCalendar() {
             </p>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Upcoming Leave List */}
-      <div className="card" style={{ marginTop: '1rem' }}>
+      <section className="card table-card">
         <h3>Approved Leave Details</h3>
         {leaveRequests.length === 0 ? (
-          <p style={{ color: '#aaa' }}>No approved leave requests.</p>
+          <div className="empty-state">No approved leave requests.</div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Days</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaveRequests
-                .filter(req => selectedEmployee === 'all' || req.email === selectedEmployee)
-                .sort((a, b) => a.start_date.localeCompare(b.start_date))
-                .map(req => (
-                  <tr key={req.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div 
-                          style={{ 
-                            width: '12px', 
-                            height: '12px', 
-                            borderRadius: '3px', 
-                            backgroundColor: getEmployeeColor(req.employee_id),
-                            flexShrink: 0
-                          }} 
-                        />
-                        {req.full_name}
-                      </div>
-                    </td>
-                    <td>{req.start_date}</td>
-                    <td>{req.end_date}</td>
-                    <td>{req.days_requested}</td>
-                    <td>{req.reason || '-'}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Start Date</th>
+                  <th>End Date</th>
+                  <th>Days</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaveRequests
+                  .filter(req => selectedEmployee === 'all' || req.email === selectedEmployee)
+                  .sort((a, b) => a.start_date.localeCompare(b.start_date))
+                  .map(req => (
+                    <tr key={req.id}>
+                      <td>
+                        <div className="legend-item">
+                          <div className="legend-swatch" style={{ width: '12px', height: '12px', backgroundColor: getEmployeeColor(req.employee_id) }} />
+                          {req.full_name}
+                        </div>
+                      </td>
+                      <td>{req.start_date}</td>
+                      <td>{req.end_date}</td>
+                      <td>{req.days_requested}</td>
+                      <td>{req.reason || '-'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

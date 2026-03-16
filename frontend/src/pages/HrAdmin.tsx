@@ -140,40 +140,63 @@ export default function HrAdmin() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <div className="loading-state">Loading HR admin tools...</div>;
+  if (error) return <div className="error-state">Error: {error}</div>;
 
   return (
-    <div>
-      <h1 className="page-title">HR Admin</h1>
-      
-      {/* Tab Navigation */}
-      <div style={{ marginBottom: '1rem' }}>
+    <div className="page-frame">
+      <section className="hero-card">
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Admin Workspace</p>
+            <h1>HR Admin</h1>
+            <p>
+              Manage employees, leave entitlements, blocked dates, and OneDrive
+              setup from the same polished blue-led interface.
+            </p>
+          </div>
+          <div className="hero-metrics">
+            <div className="metric-card">
+              <span className="metric-label">Employees</span>
+              <span className="metric-value">{employees.length}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Blocked Days</span>
+              <span className="metric-value">{blockedDays.length}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="inline-actions">
         <button
-          className={`btn ${activeTab === 'employees' ? 'btn-primary' : ''}`}
+          className={activeTab === 'employees' ? 'btn' : 'btn btn-secondary'}
           onClick={() => setActiveTab('employees')}
-          style={{ marginRight: '0.5rem' }}
         >
           Employees
         </button>
         <button
-          className={`btn ${activeTab === 'blocked-days' ? 'btn-primary' : ''}`}
+          className={activeTab === 'blocked-days' ? 'btn' : 'btn btn-secondary'}
           onClick={() => setActiveTab('blocked-days')}
         >
           Blocked Days
         </button>
       </div>
 
-      {/* Employees Tab */}
       {activeTab === 'employees' && (
-        <div className="card">
-          <h2>Employees</h2>
-          <button className="btn btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
-            {showAddForm ? 'Cancel' : 'Add Employee'}
-          </button>
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Employees</h2>
+              <p>Maintain employee records, allowances, managers, and OneDrive links.</p>
+            </div>
+            <button className="btn" onClick={() => setShowAddForm(!showAddForm)}>
+              {showAddForm ? 'Cancel' : 'Add Employee'}
+            </button>
+          </div>
 
           {showAddForm && (
-            <form onSubmit={handleAddEmployee} style={{ marginTop: '1rem' }}>
+            <form onSubmit={handleAddEmployee} className="surface-panel form-grid" style={{ marginTop: '1rem' }}>
               <div className="form-group">
                 <label>Email</label>
                 <input
@@ -208,96 +231,90 @@ export default function HrAdmin() {
                   onChange={(e) => setFormData({ ...formData, onedrive_folder_url: e.target.value })}
                   placeholder="https://yourcompany-my.sharepoint.com/personal/..."
                 />
-                <small style={{ color: '#aaa' }}>
+                <small className="form-help">
                   Each agent's personal OneDrive folder URL for file uploads
                 </small>
               </div>
-              <button type="submit" className="btn btn-success">Save Employee</button>
+              <div className="inline-actions">
+                <button type="submit" className="btn btn-success">Save Employee</button>
+              </div>
             </form>
           )}
 
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Manager</th>
-                <th style={{ textAlign: 'center' }}>Leave Allowance ({new Date().getFullYear()})</th>
-                <th>OneDrive</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((emp) => (
-                <tr key={emp.id}>
-                  <td>{emp.full_name}</td>
-                  <td>{emp.email}</td>
-                  <td>{emp.manager_email || '-'}</td>
-                  <td>
-                    {emp.leave_summary?.entitlement_set ? (
-                      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Total</div>
-                          <div style={{ fontWeight: 'bold', color: '#60a5fa' }}>{emp.leave_summary.total_allowance}</div>
-                        </div>
-                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Taken</div>
-                          <div style={{ fontWeight: 'bold', color: '#f97316' }}>{emp.leave_summary.taken}</div>
-                        </div>
-                        <div style={{ textAlign: 'center', padding: '0.25rem 0.5rem', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Left</div>
-                          <div style={{ 
-                            fontWeight: 'bold', 
-                            color: emp.leave_summary.remaining > 0 ? '#22c55e' : '#ef4444' 
-                          }}>
-                            {emp.leave_summary.remaining}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#f59e0b' }}>Not set</span>
-                    )}
-                  </td>
-                  <td>
-                    {emp.onedrive_folder_url ? (
-                      <a href={emp.onedrive_folder_url} target="_blank" rel="noopener noreferrer">
-                        Open
-                      </a>
-                    ) : (
-                      <span style={{ color: '#6b7280' }}>-</span>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      className="btn"
-                      onClick={() => handleSetEntitlement(
-                        emp.id, 
-                        emp.leave_summary?.annual_allowance, 
-                        emp.leave_summary?.carryover
-                      )}
-                      style={{ fontSize: '0.875rem', padding: '0.25rem 0.5rem' }}
-                    >
-                      {emp.leave_summary?.entitlement_set ? 'Edit' : 'Set'} Entitlement
-                    </button>
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Manager</th>
+                  <th>Leave Allowance ({new Date().getFullYear()})</th>
+                  <th>OneDrive</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {employees.map((emp) => (
+                  <tr key={emp.id}>
+                    <td>{emp.full_name}</td>
+                    <td>{emp.email}</td>
+                    <td>{emp.manager_email || '-'}</td>
+                    <td>
+                      {emp.leave_summary?.entitlement_set ? (
+                        <div className="inline-actions">
+                          <span className="status-badge status-neutral">Total {emp.leave_summary.total_allowance}</span>
+                          <span className="status-badge status-pending">Taken {emp.leave_summary.taken}</span>
+                          <span className={`status-badge ${emp.leave_summary.remaining > 0 ? 'status-approved' : 'status-declined'}`}>
+                            Left {emp.leave_summary.remaining}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="status-badge status-pending">Not set</span>
+                      )}
+                    </td>
+                    <td>
+                      {emp.onedrive_folder_url ? (
+                        <a href={emp.onedrive_folder_url} target="_blank" rel="noopener noreferrer">
+                          Open
+                        </a>
+                      ) : (
+                        <span className="muted-text">-</span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleSetEntitlement(
+                          emp.id, 
+                          emp.leave_summary?.annual_allowance, 
+                          emp.leave_summary?.carryover
+                        )}
+                      >
+                        {emp.leave_summary?.entitlement_set ? 'Edit' : 'Set'} Entitlement
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
-      {/* Blocked Days Tab */}
       {activeTab === 'blocked-days' && (
-        <div className="card">
-          <h2>Blocked Days</h2>
-          <p style={{ color: '#aaa' }}>
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Blocked Days</h2>
+              <p>
             Block specific days to prevent leave requests from being approved on those dates. 
             As an admin, you can still override and approve leave on blocked days if needed.
-          </p>
+              </p>
+            </div>
+          </div>
           
           <button 
-            className="btn btn-primary" 
+            className="btn" 
             onClick={() => setShowBlockedDayForm(!showBlockedDayForm)}
             style={{ marginBottom: '1rem' }}
           >
@@ -305,7 +322,7 @@ export default function HrAdmin() {
           </button>
 
           {showBlockedDayForm && (
-            <form onSubmit={handleAddBlockedDay} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#2a2a2a', borderRadius: '8px', border: '1px solid #444' }}>
+            <form onSubmit={handleAddBlockedDay} className="surface-panel form-grid" style={{ marginBottom: '1.5rem' }}>
               <div className="form-group">
                 <label>Date to Block</label>
                 <input
@@ -325,47 +342,50 @@ export default function HrAdmin() {
                   onChange={(e) => setBlockedDayFormData({ ...blockedDayFormData, reason: e.target.value })}
                 />
               </div>
-              <button type="submit" className="btn btn-success">Block Day</button>
+              <div className="inline-actions">
+                <button type="submit" className="btn btn-success">Block Day</button>
+              </div>
             </form>
           )}
 
           {blockedDays.length === 0 ? (
-            <p>No blocked days configured.</p>
+            <div className="empty-state">No blocked days configured.</div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Reason</th>
-                  <th>Created By</th>
-                  <th>Created At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {blockedDays.map((day) => (
-                  <tr key={day.id}>
-                    <td>
-                      <strong>{day.blocked_date}</strong>
-                    </td>
-                    <td>{day.reason}</td>
-                    <td>{day.created_by_email}</td>
-                    <td>{new Date(day.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDeleteBlockedDay(day.id, day.blocked_date)}
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                      >
-                        Remove
-                      </button>
-                    </td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reason</th>
+                    <th>Created By</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {blockedDays.map((day) => (
+                    <tr key={day.id}>
+                      <td>
+                        <strong>{day.blocked_date}</strong>
+                      </td>
+                      <td>{day.reason}</td>
+                      <td>{day.created_by_email}</td>
+                      <td>{new Date(day.created_at).toLocaleDateString()}</td>
+                      <td>
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleDeleteBlockedDay(day.id, day.blocked_date)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
       )}
     </div>
   );

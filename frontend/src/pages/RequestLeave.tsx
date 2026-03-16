@@ -77,12 +77,29 @@ export default function RequestLeave() {
   }
 
   return (
-    <div>
-      <h1 className="page-title">Request Leave</h1>
-      
-      <div className="card">
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', maxWidth: '600px' }}>
+    <div className="page-frame">
+      <section className="hero-card">
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Submit Time Away</p>
+            <h1>Request Leave</h1>
+            <p>
+              Plan annual leave with full-day and half-day support, then send it
+              through for review in the same visual style as the training portal.
+            </p>
+          </div>
+          <div className="hero-metrics">
+            <div className="metric-card">
+              <span className="metric-label">Preview</span>
+              <span className="metric-value">{daysPreview || 0}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <form onSubmit={handleSubmit} className="stack">
+          <div className="form-grid form-grid--two" style={{ maxWidth: '760px' }}>
             <div className="form-group">
               <label htmlFor="start_date">Start Date</label>
               <input
@@ -104,7 +121,6 @@ export default function RequestLeave() {
                 id="start_half_day"
                 value={formData.start_half_day}
                 onChange={(e) => setFormData({ ...formData, start_half_day: e.target.value as 'full' | 'am' | 'pm' })}
-                style={{ width: '100%' }}
               >
                 <option value="full">Full Day</option>
                 <option value="am">AM Only (morning)</option>
@@ -130,7 +146,6 @@ export default function RequestLeave() {
                 id="end_half_day"
                 value={formData.end_half_day}
                 onChange={(e) => setFormData({ ...formData, end_half_day: e.target.value as 'full' | 'am' | 'pm' })}
-                style={{ width: '100%' }}
               >
                 <option value="full">Full Day</option>
                 <option value="am">AM Only (morning)</option>
@@ -141,30 +156,31 @@ export default function RequestLeave() {
 
           {/* Days Preview */}
           {daysPreview > 0 && (
-            <div className="alert alert-info" style={{ maxWidth: '600px', marginTop: '1rem' }}>
+            <div className="alert alert-info" style={{ maxWidth: '600px' }}>
               <strong>Days Requested: {daysPreview} {daysPreview === 1 ? 'day' : 'days'}</strong>
               {daysPreview % 1 !== 0 && <span> (includes half day)</span>}
             </div>
           )}
 
-          <div className="form-group" style={{ marginTop: '1rem' }}>
+          <div className="form-group" style={{ maxWidth: '760px' }}>
             <label htmlFor="reason">Reason (Optional)</label>
             <textarea
               id="reason"
               rows={4}
               value={formData.reason}
               onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-              style={{ maxWidth: '600px' }}
             />
           </div>
 
           {error && <div className="alert alert-danger" style={{ maxWidth: '600px' }}>{error}</div>}
 
-          <button type="submit" className="btn btn-primary" disabled={submitting || daysPreview === 0}>
-            {submitting ? 'Submitting...' : 'Submit Request'}
-          </button>
+          <div className="inline-actions">
+            <button type="submit" className="btn" disabled={submitting || daysPreview === 0}>
+              {submitting ? 'Submitting...' : 'Submit Request'}
+            </button>
+          </div>
         </form>
-      </div>
+      </section>
     </div>
   );
 }

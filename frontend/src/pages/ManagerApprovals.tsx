@@ -116,123 +116,128 @@ export default function ManagerApprovals() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <div className="loading-state">Loading approval queue...</div>;
+  if (error) return <div className="error-state">Error: {error}</div>;
 
   return (
-    <div>
-      <h1 className="page-title">Manager Approvals</h1>
-      
+    <div className="page-frame">
+      <section className="hero-card">
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Review Workflow</p>
+            <h1>Manager Approvals</h1>
+            <p>
+              Review pending requests with conflict visibility, blocked-day
+              warnings, and cleaner action states.
+            </p>
+          </div>
+          <div className="hero-metrics">
+            <div className="metric-card">
+              <span className="metric-label">Pending Requests</span>
+              <span className="metric-value">{requests.length}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {userInfo?.isAdmin && (
-        <div style={{ 
-          marginBottom: '1rem', 
-          padding: '1rem', 
-          borderRadius: '8px',
-          backgroundColor: '#1e3a5f',
-          border: '1px solid #3b82f6',
-          color: '#93c5fd'
-        }}>
-          <p style={{ margin: 0, color: '#93c5fd' }}>
+        <section className="alert alert-info">
+          <p style={{ margin: 0 }}>
             <strong>Admin Mode:</strong> You can override blocked days when approving leave requests.
           </p>
-        </div>
+        </section>
       )}
       
-      <div className="card">
-        <h2>Pending Leave Requests</h2>
+      <section className="card table-card">
+        <div className="section-header">
+          <div>
+            <h2>Pending Leave Requests</h2>
+            <p>Approve quickly, while still surfacing overlap and blocked-day risk.</p>
+          </div>
+        </div>
         {requests.length === 0 ? (
-          <p>No pending requests.</p>
+          <div className="empty-state">No pending requests.</div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Days</th>
-                <th>Reason</th>
-                <th>Warnings</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((req) => {
-                const hasConflicts = req.conflicts && req.conflicts.length > 0;
-                const hasBlockedDays = req.blocked_days && req.blocked_days.length > 0;
-                
-                return (
-                  <tr key={req.id}>
-                    <td>
-                      {req.full_name}
-                      <br />
-                      <small style={{ color: '#999' }}>{req.email}</small>
-                    </td>
-                    <td>{req.start_date}</td>
-                    <td>{req.end_date}</td>
-                    <td>{req.days_requested}</td>
-                    <td>{req.reason || '-'}</td>
-                    <td>
-                      {hasConflicts && (
-                        <div style={{ 
-                          backgroundColor: '#4a3f1a',
-                          border: '1px solid #f59e0b',
-                          color: '#fcd34d',
-                          borderRadius: '4px',
-                          padding: '0.5rem',
-                          marginBottom: hasBlockedDays ? '0.5rem' : 0,
-                          fontSize: '0.875rem'
-                        }}>
-                          <strong style={{ color: '#fcd34d' }}>Conflict:</strong>
-                          {req.conflicts.map(c => (
-                            <div key={c.id} style={{ color: '#fcd34d' }}>
-                              {c.full_name}: {c.start_date} to {c.end_date}
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Start Date</th>
+                  <th>End Date</th>
+                  <th>Days</th>
+                  <th>Reason</th>
+                  <th>Warnings</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((req) => {
+                  const hasConflicts = req.conflicts && req.conflicts.length > 0;
+                  const hasBlockedDays = req.blocked_days && req.blocked_days.length > 0;
+                  
+                  return (
+                    <tr key={req.id}>
+                      <td>
+                        {req.full_name}
+                        <br />
+                        <small className="muted-text">{req.email}</small>
+                      </td>
+                      <td>{req.start_date}</td>
+                      <td>{req.end_date}</td>
+                      <td>{req.days_requested}</td>
+                      <td>{req.reason || '-'}</td>
+                      <td>
+                        <div className="stack">
+                          {hasConflicts && (
+                            <div className="alert alert-warning" style={{ marginBottom: 0 }}>
+                              <strong>Conflict:</strong>
+                              {req.conflicts.map(c => (
+                                <div key={c.id}>
+                                  {c.full_name}: {c.start_date} to {c.end_date}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                      {hasBlockedDays && (
-                        <div style={{ 
-                          backgroundColor: '#4a1a1a',
-                          border: '1px solid #dc2626',
-                          color: '#fca5a5',
-                          borderRadius: '4px',
-                          padding: '0.5rem',
-                          fontSize: '0.875rem'
-                        }}>
-                          <strong style={{ color: '#fca5a5' }}>Blocked Days:</strong>
-                          {req.blocked_days.map(b => (
-                            <div key={b.id} style={{ color: '#fca5a5' }}>
-                              {b.blocked_date}: {b.reason}
+                          )}
+                          {hasBlockedDays && (
+                            <div className="alert alert-danger" style={{ marginBottom: 0 }}>
+                              <strong>Blocked Days:</strong>
+                              {req.blocked_days.map(b => (
+                                <div key={b.id}>
+                                  {b.blocked_date}: {b.reason}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
+                          {!hasConflicts && !hasBlockedDays && (
+                            <span className="status-badge status-approved">None</span>
+                          )}
                         </div>
-                      )}
-                      {!hasConflicts && !hasBlockedDays && (
-                        <span style={{ color: '#86efac' }}>None</span>
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-success"
-                        onClick={() => handleApprove(req)}
-                        style={{ marginBottom: '0.25rem' }}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDecline(req.id)}
-                      >
-                        Decline
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td>
+                        <div className="inline-actions">
+                          <button
+                            className="btn btn-success"
+                            onClick={() => handleApprove(req)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn btn-danger"
+                            onClick={() => handleDecline(req.id)}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

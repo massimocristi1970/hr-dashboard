@@ -80,65 +80,69 @@ export default function MyFiles() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <div className="loading-state">Loading your files...</div>;
+  if (error) return <div className="error-state">Error: {error}</div>;
 
   return (
-    <div>
-      <h1 className="page-title">My Files</h1>
-      
+    <div className="page-frame">
+      <section className="hero-card">
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Document Hub</p>
+            <h1>My Files</h1>
+            <p>
+              Keep your OneDrive documents registered, searchable, and linked to
+              your HR workspace without dropping out of the shared design system.
+            </p>
+          </div>
+          <div className="hero-metrics">
+            <div className="metric-card">
+              <span className="metric-label">Registered Files</span>
+              <span className="metric-value">{files.length}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {onedriveFolderUrl && (
-        <div style={{ 
-          marginBottom: '1rem', 
-          padding: '1rem', 
-          borderRadius: '8px',
-          backgroundColor: '#1e3a5f',
-          border: '1px solid #3b82f6',
-          color: '#93c5fd'
-        }}>
-          <h3 style={{ marginTop: 0, color: '#93c5fd' }}>Your OneDrive Folder</h3>
-          <p style={{ color: '#93c5fd' }}>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
+        <section className="alert alert-info">
+          <h3>Your OneDrive Folder</h3>
+          <p>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
           <a 
             href={onedriveFolderUrl} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="btn btn-primary"
+            className="btn"
             style={{ marginTop: '0.5rem' }}
           >
             Open My OneDrive Folder
           </a>
-        </div>
+        </section>
       )}
 
       {!onedriveFolderUrl && (
-        <div style={{ 
-          marginBottom: '1rem', 
-          padding: '1rem', 
-          borderRadius: '8px',
-          backgroundColor: '#4a3f1a',
-          border: '1px solid #f59e0b',
-          color: '#fcd34d'
-        }}>
-          <p style={{ margin: 0, color: '#fcd34d' }}>
+        <section className="alert alert-warning">
+          <p style={{ margin: 0 }}>
             <strong>Note:</strong> You don't have a OneDrive folder URL configured yet. 
             Please contact HR Admin to set up your personal OneDrive folder.
           </p>
-        </div>
+        </section>
       )}
       
-      <div className="card">
-        <h2>My Registered Files</h2>
-        <button 
-          className="btn btn-primary" 
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{ marginBottom: '1rem' }}
-        >
-          {showAddForm ? 'Cancel' : 'Register New File'}
-        </button>
+      <section className="card table-card">
+        <div className="section-header">
+          <div>
+            <h2>My Registered Files</h2>
+            <p>Register document links after uploading them to your secure folder.</p>
+          </div>
+          <button className="btn" onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? 'Cancel' : 'Register New File'}
+          </button>
+        </div>
 
         {showAddForm && (
-          <form onSubmit={handleAddFile} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#2a2a2a', borderRadius: '8px', border: '1px solid #444' }}>
-            <p style={{ marginTop: 0, color: '#aaa' }}>
+          <form onSubmit={handleAddFile} className="surface-panel stack" style={{ marginBottom: '1.5rem' }}>
+            <p className="muted-text" style={{ marginTop: 0 }}>
               After uploading a file to your OneDrive folder, register it here by providing the details below.
             </p>
             <div className="form-group">
@@ -160,7 +164,7 @@ export default function MyFiles() {
                 value={formData.onedrive_file_url}
                 onChange={(e) => setFormData({ ...formData, onedrive_file_url: e.target.value })}
               />
-              <small style={{ color: '#aaa' }}>
+              <small className="form-help">
                 Right-click the file in OneDrive and select "Copy link" to get the URL
               </small>
             </div>
@@ -182,51 +186,54 @@ export default function MyFiles() {
                 onChange={(e) => setFormData({ ...formData, file_type: e.target.value })}
               />
             </div>
-            <button type="submit" className="btn btn-success">Register File</button>
+            <div className="inline-actions">
+              <button type="submit" className="btn btn-success">Register File</button>
+            </div>
           </form>
         )}
 
         {files.length === 0 ? (
-          <p>No files registered yet. Upload files to your OneDrive folder and register them here.</p>
+          <div className="empty-state">No files registered yet. Upload files to OneDrive and register them here.</div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>File Name</th>
-                <th>Description</th>
-                <th>Type</th>
-                <th>Size</th>
-                <th>Uploaded</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map((file) => (
-                <tr key={file.id}>
-                  <td>
-                    <a href={file.onedrive_file_url} target="_blank" rel="noopener noreferrer">
-                      {file.filename}
-                    </a>
-                  </td>
-                  <td>{file.file_description || '-'}</td>
-                  <td>{file.file_type || '-'}</td>
-                  <td>{formatFileSize(file.file_size_bytes)}</td>
-                  <td>{new Date(file.uploaded_at).toLocaleDateString()}</td>
-                  <td>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => handleDeleteFile(file.id, file.filename)}
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                    >
-                      Remove
-                    </button>
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>File Name</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Uploaded</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {files.map((file) => (
+                  <tr key={file.id}>
+                    <td>
+                      <a href={file.onedrive_file_url} target="_blank" rel="noopener noreferrer">
+                        {file.filename}
+                      </a>
+                    </td>
+                    <td>{file.file_description || '-'}</td>
+                    <td>{file.file_type || '-'}</td>
+                    <td>{formatFileSize(file.file_size_bytes)}</td>
+                    <td>{new Date(file.uploaded_at).toLocaleDateString()}</td>
+                    <td>
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => handleDeleteFile(file.id, file.filename)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

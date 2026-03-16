@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import MyDashboard from './pages/MyDashboard';
 import RequestLeave from './pages/RequestLeave';
@@ -10,6 +10,7 @@ import './App.css';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const email = localStorage.getItem('dev_email');
@@ -33,59 +34,85 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="app">
-        <nav className="nav">
-          <h1>HR Dashboard</h1>
-          <ul>
-            <li><Link to="/">My Dashboard</Link></li>
-            <li><Link to="/request-leave">Request Leave</Link></li>
-            <li><Link to="/my-files">My Files</Link></li>
-            <li><Link to="/manager">Manager Approvals</Link></li>
-            <li><Link to="/admin">HR Admin</Link></li>
-            <li><Link to="/leave-calendar">Leave Calendar</Link></li>
-          </ul>
-          <div style={{ marginTop: 'auto', paddingTop: '2rem', borderTop: '1px solid #333' }}>
+      <div className="app-shell">
+        <button
+          onClick={() => setMenuOpen((open) => !open)}
+          className="mobile-menu-button"
+          aria-label="Toggle navigation menu"
+        >
+          ☰
+        </button>
+
+        <nav className={`nav ${menuOpen ? 'open' : ''}`}>
+          <div className="sidebar-brand">
+            <span className="sidebar-eyebrow">People Operations</span>
+            <h1 className="sidebar-title">HR Dashboard</h1>
+            <p className="sidebar-copy">
+              Leave management, employee records, and file tracking in the same
+              visual language as the training portal.
+            </p>
+          </div>
+
+          <div className="sidebar-panel sidebar-user">
+            <span className="sidebar-user-label">Session</span>
             {currentUser ? (
               <>
-                <p style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '0.5rem' }}>
-                  Logged in as:
-                </p>
-                <p style={{ fontSize: '0.9rem', color: '#93c5fd', marginBottom: '1rem', wordBreak: 'break-all' }}>
-                  {currentUser}
-                </p>
-                <button 
-                  onClick={handleLogout}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    backgroundColor: '#4a1a1a',
-                    border: '1px solid #dc2626',
-                    color: '#fca5a5',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Logout
-                </button>
+                <strong>{currentUser}</strong>
+                <span>Signed in to the staff workspace</span>
               </>
             ) : (
-              <button 
-                onClick={handleLogin}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  backgroundColor: '#1e3a5f',
-                  border: '1px solid #3b82f6',
-                  color: '#93c5fd',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
+              <>
+                <strong>Guest access</strong>
+                <span>Use your work email to continue</span>
+              </>
+            )}
+          </div>
+
+          <div className="sidebar-panel">
+            <span className="sidebar-user-label">Navigation</span>
+            <div className="sidebar-nav" style={{ marginTop: '12px' }}>
+              <NavLink to="/" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                My Dashboard
+              </NavLink>
+              <NavLink to="/request-leave" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                Request Leave
+              </NavLink>
+              <NavLink to="/my-files" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                My Files
+              </NavLink>
+              <NavLink to="/manager" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                Manager Approvals
+              </NavLink>
+              <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                HR Admin
+              </NavLink>
+              <NavLink to="/leave-calendar" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                Leave Calendar
+              </NavLink>
+            </div>
+          </div>
+
+          <div className="sidebar-panel">
+            <span className="sidebar-user-label">Focus</span>
+            <p className="sidebar-copy" style={{ marginTop: '10px' }}>
+              More blue-led surfaces, correct SF Pro and Inter typography, and
+              cleaner staff workflows across every page.
+            </p>
+          </div>
+
+          <div className="sidebar-footer">
+            {currentUser ? (
+              <button onClick={() => { handleLogout(); setMenuOpen(false); }} style={{ width: '100%' }}>
+                Logout
+              </button>
+            ) : (
+              <button onClick={() => { handleLogin(); setMenuOpen(false); }} style={{ width: '100%' }}>
                 Login
               </button>
             )}
           </div>
         </nav>
+        {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
         <main className="main">
           <Routes>
             <Route path="/" element={<MyDashboard />} />
