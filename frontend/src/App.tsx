@@ -91,15 +91,6 @@ function App() {
               </NavLink>
             </div>
           </div>
-
-          <div className="sidebar-panel">
-            <span className="sidebar-user-label">Focus</span>
-            <p className="sidebar-copy" style={{ marginTop: '10px' }}>
-              More blue-led surfaces, correct SF Pro and Inter typography, and
-              cleaner staff workflows across every page.
-            </p>
-          </div>
-
           <div className="sidebar-footer">
             {currentUser ? (
               <button onClick={() => { handleLogout(); setMenuOpen(false); }} style={{ width: '100%' }}>
