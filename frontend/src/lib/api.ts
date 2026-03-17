@@ -139,4 +139,75 @@ export const api = {
     fetchAPI(`/api/admin/blocked-days/${id}`, {
       method: 'DELETE',
     }),
+
+  getMyAppraisals: () => fetchAPI('/api/appraisals/my'),
+
+  submitSelfReview: (id: number, data: {
+    responses: Array<{
+      area_id: number;
+      strengths?: string;
+      evidence?: string;
+      focus?: string;
+      support_needed?: string;
+    }>;
+  }) =>
+    fetchAPI(`/api/appraisals/${id}/self-review`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getManagerAppraisals: () => fetchAPI('/api/appraisals/manager'),
+
+  submitManagerReview: (id: number, data: {
+    responses: Array<{
+      area_id: number;
+      observations?: string;
+      evidence?: string;
+      focus?: string;
+      support_commitment?: string;
+      trajectory: 'growing' | 'steady' | 'ready_for_more' | 'needs_support';
+    }>;
+  }) =>
+    fetchAPI(`/api/appraisals/${id}/manager-review`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getAppraisalAdminData: () => fetchAPI('/api/admin/appraisals/settings'),
+
+  saveAppraisalSettings: (data: {
+    cadence: 'monthly' | 'quarterly' | 'biannual' | 'annual';
+    self_review_deadline_days: number;
+    manager_review_deadline_days: number;
+  }) =>
+    fetchAPI('/api/admin/appraisals/settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  addAppraisalArea: (data: {
+    title: string;
+    description?: string;
+    sort_order?: number;
+    is_active?: boolean;
+  }) =>
+    fetchAPI('/api/admin/appraisals/areas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  archiveAppraisalArea: (id: number) =>
+    fetchAPI(`/api/admin/appraisals/areas/${id}`, {
+      method: 'DELETE',
+    }),
+
+  launchAppraisalCycle: (data: {
+    cycle_label: string;
+    cycle_start_date: string;
+    cycle_end_date: string;
+  }) =>
+    fetchAPI('/api/admin/appraisals/launch', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

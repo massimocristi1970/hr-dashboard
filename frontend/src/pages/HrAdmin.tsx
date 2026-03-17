@@ -37,6 +37,44 @@ interface BlockedDay {
   created_at: string;
 }
 
+interface AppraisalSettings {
+  cadence: 'monthly' | 'quarterly' | 'biannual' | 'annual';
+  self_review_deadline_days: number;
+  manager_review_deadline_days: number;
+  updated_by_email?: string | null;
+  updated_at?: string | null;
+}
+
+interface AppraisalArea {
+  id: number;
+  title: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface AppraisalRun {
+  id: number;
+  full_name: string;
+  email: string;
+  cycle_label: string;
+  cadence: string;
+  cycle_start_date: string;
+  cycle_end_date: string;
+  self_review_due_date: string;
+  manager_review_due_date: string;
+  status: 'self_review_pending' | 'manager_review_pending' | 'completed';
+  employee_submitted_at?: string | null;
+  manager_completed_at?: string | null;
+}
+
+interface AppraisalAdminPayload {
+  settings: AppraisalSettings;
+  areas: AppraisalArea[];
+  appraisals: AppraisalRun[];
+}
+
 interface EmployeeFormData {
   email: string;
   full_name: string;
@@ -71,11 +109,13 @@ function mapEmployeeToForm(employee: Employee): EmployeeFormData {
 export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [blockedDays, setBlockedDays] = useState<BlockedDay[]>([]);
+  const [appraisalAdmin, setAppraisalAdmin] = useState<AppraisalAdminPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'employees' | 'blocked-days'>('employees');
+  const [showAppraisalAreaForm, setShowAppraisalAreaForm] = useState(false);
+  const [activeTab, setActiveTab] = useState<'employees' | 'blocked-days' | 'appraisals'>('employees');
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
 
   const [formData, setFormData] = useState<EmployeeFormData>(createEmptyEmployeeForm());
@@ -85,6 +125,24 @@ export default function HrAdmin() {
     reason: '',
   });
 
+  const [appraisalSettingsForm, setAppraisalSettingsForm] = useState<AppraisalSettings>({
+    cadence: 'quarterly',
+    self_review_deadline_days: 7,
+    manager_review_deadline_days: 7,
+  });
+
+  const [appraisalAreaForm, setAppraisalAreaForm] = useState({
+    title: '',
+    description: '',
+    sort_order: 0,
+  });
+
+  const [appraisalCycleForm, setAppraisalCycleForm] = useState({
+    cycle_label: '',
+    cycle_start_date: '',
+    cycle_end_date: '',
+  });
+
   useEffect(() => {
     loadData();
   }, []);
@@ -92,12 +150,15 @@ export default function HrAdmin() {
   async function loadData() {
     try {
       setLoading(true);
-      const [employeesData, blockedDaysData] = await Promise.all([
+      const [employeesData, blockedDaysData, appraisalData] = await Promise.all([
         api.getAllEmployees(),
-        api.getBlockedDays()
+        api.getBlockedDays(),
+        api.getAppraisalAdminData(),
       ]);
       setEmployees(employeesData);
       setBlockedDays(blockedDaysData);
+      setAppraisalAdmin(appraisalData);
+      setAppraisalSettingsForm(appraisalData.settings);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -229,6 +290,62 @@ export default function HrAdmin() {
     }
   }
 
+  async function handleSaveAppraisalSettings(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const updated = await api.saveAppraisalSettings({
+        cadence: appraisalSettingsForm.cadence,
+        self_review_deadline_days: Number(appraisalSettingsForm.self_review_deadline_days),
+        manager_review_deadline_days: Number(appraisalSettingsForm.manager_review_deadline_days),
+      });
+      setAppraisalSettingsForm(updated);
+      alert('Appraisal settings saved.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleAddAppraisalArea(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.addAppraisalArea({
+        title: appraisalAreaForm.title,
+        description: appraisalAreaForm.description || undefined,
+        sort_order: Number(appraisalAreaForm.sort_order),
+      });
+      setAppraisalAreaForm({ title: '', description: '', sort_order: 0 });
+      setShowAppraisalAreaForm(false);
+      alert('Appraisal area added.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleArchiveAppraisalArea(id: number, title: string) {
+    if (!confirm(`Archive appraisal area "${title}"?`)) {
+      return;
+    }
+    try {
+      await api.archiveAppraisalArea(id);
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleLaunchAppraisalCycle(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.launchAppraisalCycle(appraisalCycleForm);
+      alert('Appraisal cycle launched.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   if (loading) return <div className="loading-state">Loading HR admin tools...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
@@ -276,6 +393,12 @@ export default function HrAdmin() {
           onClick={() => setActiveTab('blocked-days')}
         >
           Blocked Days
+        </button>
+        <button
+          className={activeTab === 'appraisals' ? 'btn' : 'btn btn-secondary'}
+          onClick={() => setActiveTab('appraisals')}
+        >
+          Appraisals
         </button>
       </div>
 
@@ -648,6 +771,254 @@ export default function HrAdmin() {
               </table>
             </div>
           )}
+        </section>
+      )}
+
+      {activeTab === 'appraisals' && appraisalAdmin && (
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Appraisals</h2>
+              <p>Set the cadence, define the review areas, and launch a cycle for employees and managers.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveAppraisalSettings} className="surface-panel stack" style={{ marginBottom: '1.5rem' }}>
+            <div className="section-header">
+              <div>
+                <h3 style={{ marginBottom: '0.35rem' }}>Schedule Settings</h3>
+                <p style={{ margin: 0 }}>Choose the appraisal rhythm and how long each stage stays open after a cycle ends.</p>
+              </div>
+            </div>
+            <div className="form-grid form-grid--two">
+              <div className="form-group">
+                <label>Cadence</label>
+                <select
+                  value={appraisalSettingsForm.cadence}
+                  onChange={(e) => setAppraisalSettingsForm({
+                    ...appraisalSettingsForm,
+                    cadence: e.target.value as AppraisalSettings['cadence'],
+                  })}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="biannual">Bi-Annual</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Self Review Deadline (Days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={appraisalSettingsForm.self_review_deadline_days}
+                  onChange={(e) => setAppraisalSettingsForm({
+                    ...appraisalSettingsForm,
+                    self_review_deadline_days: Number(e.target.value),
+                  })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Manager Review Deadline (Days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={appraisalSettingsForm.manager_review_deadline_days}
+                  onChange={(e) => setAppraisalSettingsForm({
+                    ...appraisalSettingsForm,
+                    manager_review_deadline_days: Number(e.target.value),
+                  })}
+                />
+              </div>
+            </div>
+            <div className="inline-actions">
+              <button type="submit" className="btn btn-success">Save Settings</button>
+            </div>
+          </form>
+
+          <div className="surface-panel stack" style={{ marginBottom: '1.5rem' }}>
+            <div className="section-header">
+              <div>
+                <h3 style={{ marginBottom: '0.35rem' }}>Appraisal Areas</h3>
+                <p style={{ margin: 0 }}>These are the sections both employee and manager will use during the review.</p>
+              </div>
+              <button className="btn btn-secondary" onClick={() => setShowAppraisalAreaForm((current) => !current)}>
+                {showAppraisalAreaForm ? 'Cancel' : 'Add Area'}
+              </button>
+            </div>
+
+            {showAppraisalAreaForm && (
+              <form onSubmit={handleAddAppraisalArea} className="form-grid form-grid--two">
+                <div className="form-group">
+                  <label>Area Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={appraisalAreaForm.title}
+                    onChange={(e) => setAppraisalAreaForm({ ...appraisalAreaForm, title: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Sort Order</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={appraisalAreaForm.sort_order}
+                    onChange={(e) => setAppraisalAreaForm({ ...appraisalAreaForm, sort_order: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Description</label>
+                  <textarea
+                    rows={3}
+                    value={appraisalAreaForm.description}
+                    onChange={(e) => setAppraisalAreaForm({ ...appraisalAreaForm, description: e.target.value })}
+                  />
+                </div>
+                <div className="inline-actions">
+                  <button type="submit" className="btn btn-success">Save Area</button>
+                </div>
+              </form>
+            )}
+
+            {appraisalAdmin.areas.length === 0 ? (
+              <div className="empty-state">No appraisal areas configured yet.</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Area</th>
+                      <th>Description</th>
+                      <th>Order</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appraisalAdmin.areas.map((area) => (
+                      <tr key={area.id}>
+                        <td>{area.title}</td>
+                        <td>{area.description || '-'}</td>
+                        <td>{area.sort_order}</td>
+                        <td>
+                          <span className={`status-badge ${area.is_active ? 'status-approved' : 'status-neutral'}`}>
+                            {area.is_active ? 'Active' : 'Archived'}
+                          </span>
+                        </td>
+                        <td>
+                          {area.is_active ? (
+                            <button className="btn btn-danger" onClick={() => handleArchiveAppraisalArea(area.id, area.title)}>
+                              Archive
+                            </button>
+                          ) : (
+                            <span className="muted-text">No action</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleLaunchAppraisalCycle} className="surface-panel stack" style={{ marginBottom: '1.5rem' }}>
+            <div className="section-header">
+              <div>
+                <h3 style={{ marginBottom: '0.35rem' }}>Launch Appraisal Cycle</h3>
+                <p style={{ margin: 0 }}>Creates an appraisal record for every employee using the active areas and current cadence.</p>
+              </div>
+            </div>
+            <div className="form-grid form-grid--two">
+              <div className="form-group">
+                <label>Cycle Label</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Q2 2026 Review"
+                  value={appraisalCycleForm.cycle_label}
+                  onChange={(e) => setAppraisalCycleForm({ ...appraisalCycleForm, cycle_label: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Cycle Start Date</label>
+                <input
+                  type="date"
+                  required
+                  value={appraisalCycleForm.cycle_start_date}
+                  onChange={(e) => setAppraisalCycleForm({ ...appraisalCycleForm, cycle_start_date: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Cycle End Date</label>
+                <input
+                  type="date"
+                  required
+                  value={appraisalCycleForm.cycle_end_date}
+                  onChange={(e) => setAppraisalCycleForm({ ...appraisalCycleForm, cycle_end_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="inline-actions">
+              <button type="submit" className="btn btn-success">Launch Cycle</button>
+            </div>
+          </form>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Cycle</th>
+                  <th>Period</th>
+                  <th>Self Review Due</th>
+                  <th>Manager Due</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appraisalAdmin.appraisals.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>
+                      <div className="empty-state">No appraisal cycles launched yet.</div>
+                    </td>
+                  </tr>
+                ) : (
+                  appraisalAdmin.appraisals.map((appraisal) => (
+                    <tr key={appraisal.id}>
+                      <td>
+                        {appraisal.full_name}
+                        <br />
+                        <small className="muted-text">{appraisal.email}</small>
+                      </td>
+                      <td>
+                        <strong>{appraisal.cycle_label}</strong>
+                        <br />
+                        <small className="muted-text">{appraisal.cadence}</small>
+                      </td>
+                      <td>{appraisal.cycle_start_date} to {appraisal.cycle_end_date}</td>
+                      <td>{appraisal.self_review_due_date}</td>
+                      <td>{appraisal.manager_review_due_date}</td>
+                      <td>
+                        <span className={`status-badge ${
+                          appraisal.status === 'completed'
+                            ? 'status-approved'
+                            : appraisal.status === 'manager_review_pending'
+                              ? 'status-pending'
+                              : 'status-neutral'
+                        }`}>
+                          {appraisal.status.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </div>

@@ -61,6 +61,49 @@ const ApprovalSchema = z.object({
   admin_override: z.boolean().optional(), // Allow admin to override blocked days
 });
 
+const AppraisalCadenceSchema = z.enum(['monthly', 'quarterly', 'biannual', 'annual']);
+const AppraisalTrajectorySchema = z.enum(['growing', 'steady', 'ready_for_more', 'needs_support']);
+
+const AppraisalSettingsSchema = z.object({
+  cadence: AppraisalCadenceSchema,
+  self_review_deadline_days: z.number().int().min(1).max(90),
+  manager_review_deadline_days: z.number().int().min(1).max(90),
+});
+
+const AppraisalAreaSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  sort_order: z.number().int().nonnegative().optional(),
+  is_active: z.boolean().optional(),
+});
+
+const AppraisalSelfReviewSchema = z.object({
+  responses: z.array(z.object({
+    area_id: z.number().int().positive(),
+    strengths: z.string().optional(),
+    evidence: z.string().optional(),
+    focus: z.string().optional(),
+    support_needed: z.string().optional(),
+  })).min(1),
+});
+
+const AppraisalManagerReviewSchema = z.object({
+  responses: z.array(z.object({
+    area_id: z.number().int().positive(),
+    observations: z.string().optional(),
+    evidence: z.string().optional(),
+    focus: z.string().optional(),
+    support_commitment: z.string().optional(),
+    trajectory: AppraisalTrajectorySchema,
+  })).min(1),
+});
+
+const AppraisalLaunchSchema = z.object({
+  cycle_label: z.string().min(1),
+  cycle_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  cycle_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
 // Helper: Get user email from Cloudflare Access header or dev impersonation
 function getUserEmail(req: Request): string | null {
   const url = new URL(req.url);
@@ -149,6 +192,92 @@ function parseExtraAccessLinks(value: unknown): Array<{ label: string; url: stri
   } catch {
     return [];
   }
+}
+
+function addDays(date: string, days: number): string {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().split('T')[0];
+}
+
+function normalizeText(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function getAppraisalSettings(env: Env) {
+  const settings = await env.hr_dashboard_db.prepare(`
+    SELECT cadence, self_review_deadline_days, manager_review_deadline_days, updated_by_email, updated_at
+    FROM appraisal_settings
+    WHERE id = 1
+  `).first();
+
+  return settings || {
+    cadence: 'quarterly',
+    self_review_deadline_days: 7,
+    manager_review_deadline_days: 7,
+    updated_by_email: null,
+    updated_at: null,
+  };
+}
+
+async function getActiveAppraisalAreas(env: Env) {
+  const areas = await env.hr_dashboard_db.prepare(`
+    SELECT id, title, description, sort_order, is_active
+    FROM appraisal_areas
+    WHERE is_active = 1
+    ORDER BY sort_order ASC, id ASC
+  `).all();
+
+  return (areas.results as any[]).map((area) => ({
+    ...area,
+    is_active: Boolean(area.is_active),
+  }));
+}
+
+async function getAppraisalDetail(env: Env, appraisalId: number) {
+  const appraisal = await env.hr_dashboard_db.prepare(`
+    SELECT
+      a.*,
+      e.full_name,
+      e.email,
+      e.manager_email AS employee_manager_email
+    FROM appraisals a
+    JOIN employees e ON e.id = a.employee_id
+    WHERE a.id = ?
+  `).bind(appraisalId).first();
+
+  if (!appraisal) {
+    return null;
+  }
+
+  const responses = await env.hr_dashboard_db.prepare(`
+    SELECT
+      ar.id,
+      ar.title,
+      ar.description,
+      ar.sort_order,
+      aar.employee_strengths,
+      aar.employee_evidence,
+      aar.employee_focus,
+      aar.employee_support_needed,
+      aar.manager_observations,
+      aar.manager_evidence,
+      aar.manager_focus,
+      aar.manager_support_commitment,
+      aar.manager_trajectory
+    FROM appraisal_areas ar
+    LEFT JOIN appraisal_area_responses aar
+      ON aar.area_id = ar.id
+      AND aar.appraisal_id = ?
+    WHERE ar.is_active = 1
+    ORDER BY ar.sort_order ASC, ar.id ASC
+  `).bind(appraisalId).all();
+
+  return {
+    ...appraisal,
+    responses: responses.results,
+  };
 }
 
 // CORS helper
@@ -398,6 +527,204 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       `).all();
 
       return new Response(JSON.stringify(requests.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/appraisals/my' && method === 'GET') {
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id FROM employees WHERE email = ?'
+      ).bind(userEmail).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const appraisals = await env.hr_dashboard_db.prepare(`
+        SELECT *
+        FROM appraisals
+        WHERE employee_id = ?
+        ORDER BY cycle_end_date DESC, created_at DESC
+      `).bind(employee.id).all();
+
+      const detailed = await Promise.all(
+        (appraisals.results as any[]).map((appraisal) => getAppraisalDetail(env, appraisal.id))
+      );
+
+      return new Response(JSON.stringify(detailed.filter(Boolean)), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/appraisals/manager' && method === 'GET') {
+      const appraisals = await env.hr_dashboard_db.prepare(`
+        SELECT a.id
+        FROM appraisals a
+        JOIN employees e ON e.id = a.employee_id
+        WHERE a.manager_email = ?
+        ORDER BY a.manager_review_due_date ASC, a.created_at DESC
+      `).bind(userEmail).all();
+
+      const detailed = await Promise.all(
+        (appraisals.results as any[]).map((appraisal) => getAppraisalDetail(env, appraisal.id))
+      );
+
+      return new Response(JSON.stringify(detailed.filter(Boolean)), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/\/api\/appraisals\/\d+\/self-review/) && method === 'PUT') {
+      const match = path.match(/\/api\/appraisals\/(\d+)\/self-review/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const appraisalId = parseInt(match[1]);
+      const appraisal = await env.hr_dashboard_db.prepare(`
+        SELECT a.*, e.email
+        FROM appraisals a
+        JOIN employees e ON e.id = a.employee_id
+        WHERE a.id = ?
+      `).bind(appraisalId).first() as any;
+
+      if (!appraisal) {
+        return new Response(JSON.stringify({ error: 'Appraisal not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      if (appraisal.email !== userEmail && !isAdmin) {
+        return new Response(JSON.stringify({ error: 'Not authorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AppraisalSelfReviewSchema.parse(body);
+
+      for (const response of validated.responses) {
+        await env.hr_dashboard_db.prepare(`
+          INSERT INTO appraisal_area_responses (
+            appraisal_id,
+            area_id,
+            employee_strengths,
+            employee_evidence,
+            employee_focus,
+            employee_support_needed,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(appraisal_id, area_id) DO UPDATE SET
+            employee_strengths = excluded.employee_strengths,
+            employee_evidence = excluded.employee_evidence,
+            employee_focus = excluded.employee_focus,
+            employee_support_needed = excluded.employee_support_needed,
+            updated_at = datetime('now')
+        `).bind(
+          appraisalId,
+          response.area_id,
+          normalizeText(response.strengths),
+          normalizeText(response.evidence),
+          normalizeText(response.focus),
+          normalizeText(response.support_needed)
+        ).run();
+      }
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE appraisals
+        SET status = 'manager_review_pending',
+            employee_submitted_at = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(appraisalId).run();
+
+      const updated = await getAppraisalDetail(env, appraisalId);
+      return new Response(JSON.stringify(updated), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/\/api\/appraisals\/\d+\/manager-review/) && method === 'PUT') {
+      const match = path.match(/\/api\/appraisals\/(\d+)\/manager-review/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const appraisalId = parseInt(match[1]);
+      const appraisal = await env.hr_dashboard_db.prepare(`
+        SELECT *
+        FROM appraisals
+        WHERE id = ?
+      `).bind(appraisalId).first() as any;
+
+      if (!appraisal) {
+        return new Response(JSON.stringify({ error: 'Appraisal not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      if (appraisal.manager_email !== userEmail && !isAdmin) {
+        return new Response(JSON.stringify({ error: 'Not authorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AppraisalManagerReviewSchema.parse(body);
+
+      for (const response of validated.responses) {
+        await env.hr_dashboard_db.prepare(`
+          INSERT INTO appraisal_area_responses (
+            appraisal_id,
+            area_id,
+            manager_observations,
+            manager_evidence,
+            manager_focus,
+            manager_support_commitment,
+            manager_trajectory,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(appraisal_id, area_id) DO UPDATE SET
+            manager_observations = excluded.manager_observations,
+            manager_evidence = excluded.manager_evidence,
+            manager_focus = excluded.manager_focus,
+            manager_support_commitment = excluded.manager_support_commitment,
+            manager_trajectory = excluded.manager_trajectory,
+            updated_at = datetime('now')
+        `).bind(
+          appraisalId,
+          response.area_id,
+          normalizeText(response.observations),
+          normalizeText(response.evidence),
+          normalizeText(response.focus),
+          normalizeText(response.support_commitment),
+          response.trajectory
+        ).run();
+      }
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE appraisals
+        SET status = 'completed',
+            manager_completed_at = datetime('now'),
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(appraisalId).run();
+
+      const updated = await getAppraisalDetail(env, appraisalId);
+      return new Response(JSON.stringify(updated), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -654,6 +981,205 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       `).all();
 
       return new Response(JSON.stringify(requests.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/appraisals/settings' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const [settings, areas, appraisals] = await Promise.all([
+        getAppraisalSettings(env),
+        env.hr_dashboard_db.prepare(`
+          SELECT id, title, description, sort_order, is_active, created_at
+          FROM appraisal_areas
+          ORDER BY sort_order ASC, id ASC
+        `).all(),
+        env.hr_dashboard_db.prepare(`
+          SELECT
+            a.*,
+            e.full_name,
+            e.email
+          FROM appraisals a
+          JOIN employees e ON e.id = a.employee_id
+          ORDER BY a.cycle_end_date DESC, a.created_at DESC
+          LIMIT 100
+        `).all(),
+      ]);
+
+      return new Response(JSON.stringify({
+        settings,
+        areas: (areas.results as any[]).map((area) => ({
+          ...area,
+          is_active: Boolean(area.is_active),
+        })),
+        appraisals: appraisals.results,
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/appraisals/settings' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AppraisalSettingsSchema.parse(body);
+
+      await env.hr_dashboard_db.prepare(`
+        INSERT INTO appraisal_settings (
+          id,
+          cadence,
+          self_review_deadline_days,
+          manager_review_deadline_days,
+          updated_by_email,
+          updated_at
+        ) VALUES (1, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+          cadence = excluded.cadence,
+          self_review_deadline_days = excluded.self_review_deadline_days,
+          manager_review_deadline_days = excluded.manager_review_deadline_days,
+          updated_by_email = excluded.updated_by_email,
+          updated_at = datetime('now')
+      `).bind(
+        validated.cadence,
+        validated.self_review_deadline_days,
+        validated.manager_review_deadline_days,
+        userEmail
+      ).run();
+
+      const settings = await getAppraisalSettings(env);
+      return new Response(JSON.stringify(settings), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/appraisals/areas' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AppraisalAreaSchema.parse(body);
+
+      await env.hr_dashboard_db.prepare(`
+        INSERT INTO appraisal_areas (title, description, sort_order, is_active)
+        VALUES (?, ?, ?, ?)
+      `).bind(
+        validated.title.trim(),
+        normalizeText(validated.description),
+        validated.sort_order ?? 0,
+        validated.is_active === false ? 0 : 1
+      ).run();
+
+      const areas = await env.hr_dashboard_db.prepare(`
+        SELECT id, title, description, sort_order, is_active, created_at
+        FROM appraisal_areas
+        ORDER BY sort_order ASC, id ASC
+      `).all();
+
+      return new Response(JSON.stringify((areas.results as any[]).map((area) => ({
+        ...area,
+        is_active: Boolean(area.is_active),
+      }))), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.startsWith('/api/admin/appraisals/areas/') && method === 'DELETE') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/\/api\/admin\/appraisals\/areas\/(\d+)/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE appraisal_areas
+        SET is_active = 0
+        WHERE id = ?
+      `).bind(parseInt(match[1])).run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/appraisals/launch' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AppraisalLaunchSchema.parse(body);
+      const settings = await getAppraisalSettings(env) as any;
+      const areas = await getActiveAppraisalAreas(env);
+
+      if (areas.length === 0) {
+        return new Response(JSON.stringify({ error: 'Add at least one active appraisal area first' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const employees = await env.hr_dashboard_db.prepare(`
+        SELECT id, manager_email
+        FROM employees
+        ORDER BY full_name ASC
+      `).all();
+
+      for (const employee of employees.results as any[]) {
+        await env.hr_dashboard_db.prepare(`
+          INSERT OR IGNORE INTO appraisals (
+            employee_id,
+            manager_email,
+            cycle_label,
+            cadence,
+            cycle_start_date,
+            cycle_end_date,
+            self_review_due_date,
+            manager_review_due_date,
+            status,
+            created_by_email,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'self_review_pending', ?, datetime('now'))
+        `).bind(
+          employee.id,
+          employee.manager_email || null,
+          validated.cycle_label.trim(),
+          settings.cadence,
+          validated.cycle_start_date,
+          validated.cycle_end_date,
+          addDays(validated.cycle_end_date, settings.self_review_deadline_days),
+          addDays(validated.cycle_end_date, settings.self_review_deadline_days + settings.manager_review_deadline_days),
+          userEmail
+        ).run();
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
