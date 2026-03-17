@@ -248,6 +248,7 @@
 .section-header p {
   margin: 0;
   color: var(--color-muted-strong);
+  font-weight: 600;
 }
 
 .stats-strip {
@@ -311,6 +312,13 @@
 .surface-panel span,
 .surface-panel small {
   color: var(--color-text);
+}
+
+.surface-panel .section-header p,
+.surface-panel .muted-text,
+.surface-panel p.muted-text {
+  color: var(--color-muted-strong);
+  font-weight: 600;
 }
 
 .alert {
