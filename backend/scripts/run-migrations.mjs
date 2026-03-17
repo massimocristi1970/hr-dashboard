@@ -38,10 +38,11 @@ function runWrangler(args, { capture = false } = {}) {
     finalArgs.push('--json');
   }
 
-  const result = spawnSync('wrangler', finalArgs, {
+  const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const result = spawnSync(command, ['wrangler', ...finalArgs], {
     cwd: backendDir,
     encoding: 'utf8',
-    shell: true,
+    shell: false,
     stdio: capture ? 'pipe' : 'inherit',
   });
 

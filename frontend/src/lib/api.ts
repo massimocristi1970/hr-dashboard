@@ -51,6 +51,8 @@ export const api = {
     }),
   
   getPendingRequests: () => fetchAPI('/api/leave/pending'),
+
+  getLeaveCalendar: () => fetchAPI('/api/leave/calendar'),
   
   approveRequest: (id: number, notes: string, adminOverride?: boolean) =>
     fetchAPI(`/api/leave/${id}/approve`, {
@@ -100,6 +102,11 @@ export const api = {
     full_name: string;
     manager_email?: string;
     onedrive_folder_url?: string;
+    onedrive_shared_with_employee?: boolean;
+    onedrive_extra_access_links?: Array<{
+      label: string;
+      url: string;
+    }>;
   }) =>
     fetchAPI('/api/admin/employees', {
       method: 'POST',

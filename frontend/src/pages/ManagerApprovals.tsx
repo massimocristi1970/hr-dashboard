@@ -64,7 +64,9 @@ export default function ManagerApprovals() {
     const hasConflicts = req.conflicts && req.conflicts.length > 0;
     const hasBlockedDays = req.blocked_days && req.blocked_days.length > 0;
     
-    let message = 'Approval notes (optional):';
+    let message = hasConflicts
+      ? 'Approval notes are required because another employee is already off during this period:'
+      : 'Approval notes (optional):';
     
     if (hasConflicts) {
       const conflictNames = req.conflicts.map(c => c.full_name).join(', ');
@@ -77,6 +79,11 @@ export default function ManagerApprovals() {
     }
 
     const notes = prompt(message) || '';
+
+    if (hasConflicts && !notes.trim()) {
+      alert('A manager note is required when approving leave that overlaps with someone already off.');
+      return;
+    }
     
     // If there are blocked days, check if user is admin and wants to override
     let adminOverride = false;
@@ -201,6 +208,7 @@ export default function ManagerApprovals() {
                           {hasConflicts && (
                             <div className="alert alert-warning" style={{ marginBottom: 0 }}>
                               <strong>Conflict:</strong>
+                              <div>A note is required to approve this request.</div>
                               {req.conflicts.map(c => (
                                 <div key={c.id}>
                                   {c.full_name}: {c.start_date} to {c.end_date}

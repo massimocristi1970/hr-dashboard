@@ -20,12 +20,6 @@ interface LeaveRequest {
   email: string;
 }
 
-interface Employee {
-  id: number;
-  full_name: string;
-  email: string;
-}
-
 // Generate a consistent color for each employee based on their id
 function getEmployeeColor(employeeId: number): string {
   const colors = [
@@ -45,7 +39,6 @@ function getEmployeeColor(employeeId: number): string {
 
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -58,18 +51,8 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, employeesData] = await Promise.all([
-        api.getAllRequests(),
-        api.getAllEmployees()
-      ]);
-      
-      // Filter to only approved leave
-      const approvedRequests = requestsData.filter(
-        (req: LeaveRequest) => req.status === 'approved'
-      );
-      
-      setLeaveRequests(approvedRequests);
-      setEmployees(employeesData);
+      const requestsData = await api.getLeaveCalendar();
+      setLeaveRequests(requestsData);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -133,11 +116,10 @@ export default function AdminLeaveCalendar() {
   const employeesWithLeave = Array.from(
     new Set(leaveRequests.map(req => req.email))
   ).map(email => {
-    const emp = employees.find(e => e.email === email);
     const req = leaveRequests.find(r => r.email === email);
     return {
       email,
-      full_name: emp?.full_name || req?.full_name || email,
+      full_name: req?.full_name || email,
       employee_id: req?.employee_id || 0
     };
   });

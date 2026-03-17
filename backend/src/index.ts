@@ -15,6 +15,13 @@ const EmployeeSchema = z.object({
   full_name: z.string().min(1),
   manager_email: optionalEmail,
   onedrive_folder_url: optionalUrl,
+  onedrive_shared_with_employee: z.boolean().optional(),
+  onedrive_extra_access_links: z.array(
+    z.object({
+      label: z.string().min(1),
+      url: z.string().url(),
+    })
+  ).optional(),
 });
 
 const LeaveRequestSchema = z.object({
@@ -119,6 +126,29 @@ function getDatesInRange(startDate: string, endDate: string): string[] {
 // Helper: Check if two date ranges overlap
 function dateRangesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
   return start1 <= end2 && end1 >= start2;
+}
+
+function parseExtraAccessLinks(value: unknown): Array<{ label: string; url: string }> {
+  if (!value || typeof value !== 'string') {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item: any) =>
+      item &&
+      typeof item.label === 'string' &&
+      item.label.trim() &&
+      typeof item.url === 'string' &&
+      item.url.trim()
+    );
+  } catch {
+    return [];
+  }
 }
 
 // CORS helper
@@ -357,6 +387,21 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       });
     }
 
+    // Get approved leave for the shared leave calendar
+    if (path === '/api/leave/calendar' && method === 'GET') {
+      const requests = await env.hr_dashboard_db.prepare(`
+        SELECT lr.*, e.full_name, e.email
+        FROM leave_requests lr
+        JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.status = 'approved'
+        ORDER BY lr.start_date ASC, e.full_name ASC
+      `).all();
+
+      return new Response(JSON.stringify(requests.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
     // Approve/decline leave request
     if (path.startsWith('/api/leave/') && method === 'PUT') {
       const match = path.match(/\/api\/leave\/(\d+)\/(approve|decline)/);
@@ -402,6 +447,25 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           SELECT * FROM blocked_days
           WHERE blocked_date >= ? AND blocked_date <= ?
         `).bind(request.start_date, request.end_date).all();
+
+        const conflictingLeave = await env.hr_dashboard_db.prepare(`
+          SELECT lr.id
+          FROM leave_requests lr
+          WHERE lr.status = 'approved'
+          AND lr.id != ?
+          AND lr.start_date <= ?
+          AND lr.end_date >= ?
+          LIMIT 1
+        `).bind(requestId, request.end_date, request.start_date).first();
+
+        if (conflictingLeave && !notes.trim()) {
+          return new Response(JSON.stringify({
+            error: 'Manager note required when approving overlapping leave',
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+          });
+        }
 
         if (blockedDays.results && blockedDays.results.length > 0) {
           // If not admin or admin override not set, reject the approval
@@ -490,6 +554,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         
         return {
           ...emp,
+          onedrive_shared_with_employee: Boolean(emp.onedrive_shared_with_employee),
+          onedrive_extra_access_links: parseExtraAccessLinks(emp.onedrive_extra_access_links),
           leave_summary: {
             year: currentYear,
             total_allowance: total,
@@ -520,17 +586,22 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const body = await req.json();
       const validated = EmployeeSchema.parse(body);
+      const extraAccessLinksJson = JSON.stringify(validated.onedrive_extra_access_links || []);
 
       await env.hr_dashboard_db.prepare(
-        'INSERT INTO employees (email, full_name, manager_email, onedrive_folder_url) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET full_name = ?, manager_email = ?, onedrive_folder_url = ?'
+        'INSERT INTO employees (email, full_name, manager_email, onedrive_folder_url, onedrive_shared_with_employee, onedrive_extra_access_links) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET full_name = ?, manager_email = ?, onedrive_folder_url = ?, onedrive_shared_with_employee = ?, onedrive_extra_access_links = ?'
       ).bind(
         validated.email,
         validated.full_name,
         validated.manager_email || null,
         validated.onedrive_folder_url || null,
+        validated.onedrive_shared_with_employee ? 1 : 0,
+        extraAccessLinksJson,
         validated.full_name,
         validated.manager_email || null,
-        validated.onedrive_folder_url || null
+        validated.onedrive_folder_url || null,
+        validated.onedrive_shared_with_employee ? 1 : 0,
+        extraAccessLinksJson
       ).run();
 
       return new Response(JSON.stringify({ success: true }), {
@@ -594,7 +665,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     // Get my files (agent can only see their own files)
     if (path === '/api/files/my-files' && method === 'GET') {
       const employee = await env.hr_dashboard_db.prepare(
-        'SELECT id, onedrive_folder_url FROM employees WHERE email = ?'
+        'SELECT id, onedrive_folder_url, onedrive_shared_with_employee FROM employees WHERE email = ?'
       ).bind(userEmail).first();
 
       if (!employee) {
@@ -611,6 +682,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       return new Response(JSON.stringify({
         files: files.results,
         onedrive_folder_url: employee.onedrive_folder_url,
+        onedrive_shared_with_employee: Boolean((employee as any).onedrive_shared_with_employee),
       }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });

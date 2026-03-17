@@ -13,12 +13,19 @@ interface LeaveSummary {
   entitlement_set: boolean;
 }
 
+interface AccessLink {
+  label: string;
+  url: string;
+}
+
 interface Employee {
   id: number;
   email: string;
   full_name: string;
   manager_email: string;
   onedrive_folder_url: string;
+  onedrive_shared_with_employee: boolean;
+  onedrive_extra_access_links: AccessLink[];
   leave_summary: LeaveSummary;
 }
 
@@ -30,6 +37,37 @@ interface BlockedDay {
   created_at: string;
 }
 
+interface EmployeeFormData {
+  email: string;
+  full_name: string;
+  manager_email: string;
+  onedrive_folder_url: string;
+  onedrive_shared_with_employee: boolean;
+  onedrive_extra_access_links: AccessLink[];
+}
+
+function createEmptyEmployeeForm(): EmployeeFormData {
+  return {
+    email: '',
+    full_name: '',
+    manager_email: '',
+    onedrive_folder_url: '',
+    onedrive_shared_with_employee: false,
+    onedrive_extra_access_links: [],
+  };
+}
+
+function mapEmployeeToForm(employee: Employee): EmployeeFormData {
+  return {
+    email: employee.email,
+    full_name: employee.full_name,
+    manager_email: employee.manager_email || '',
+    onedrive_folder_url: employee.onedrive_folder_url || '',
+    onedrive_shared_with_employee: employee.onedrive_shared_with_employee || false,
+    onedrive_extra_access_links: employee.onedrive_extra_access_links || [],
+  };
+}
+
 export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [blockedDays, setBlockedDays] = useState<BlockedDay[]>([]);
@@ -38,13 +76,9 @@ export default function HrAdmin() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'employees' | 'blocked-days'>('employees');
+  const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
 
-  const [formData, setFormData] = useState({
-    email: '',
-    full_name: '',
-    manager_email: '',
-    onedrive_folder_url: '',
-  });
+  const [formData, setFormData] = useState<EmployeeFormData>(createEmptyEmployeeForm());
 
   const [blockedDayFormData, setBlockedDayFormData] = useState({
     blocked_date: '',
@@ -71,16 +105,69 @@ export default function HrAdmin() {
     }
   }
 
-  async function handleAddEmployee(e: React.FormEvent) {
+  function resetEmployeeForm() {
+    setFormData(createEmptyEmployeeForm());
+    setEditingEmployeeId(null);
+    setShowAddForm(false);
+  }
+
+  async function handleSaveEmployee(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api.addEmployee(formData);
-      alert('Employee added!');
-      setFormData({ email: '', full_name: '', manager_email: '', onedrive_folder_url: '' });
-      setShowAddForm(false);
+      await api.addEmployee({
+        ...formData,
+        manager_email: formData.manager_email || undefined,
+        onedrive_folder_url: formData.onedrive_folder_url || undefined,
+        onedrive_extra_access_links: formData.onedrive_extra_access_links.filter(
+          (link) => link.label.trim() && link.url.trim()
+        ),
+      });
+      alert(editingEmployeeId ? 'Employee updated.' : 'Employee added.');
+      resetEmployeeForm();
       loadData();
     } catch (err: any) {
       alert('Error: ' + err.message);
+    }
+  }
+
+  function handleEditEmployee(employee: Employee) {
+    setFormData(mapEmployeeToForm(employee));
+    setEditingEmployeeId(employee.id);
+    setShowAddForm(true);
+  }
+
+  function updateAccessLink(index: number, key: 'label' | 'url', value: string) {
+    setFormData((current) => ({
+      ...current,
+      onedrive_extra_access_links: current.onedrive_extra_access_links.map((link, linkIndex) =>
+        linkIndex === index ? { ...link, [key]: value } : link
+      ),
+    }));
+  }
+
+  function addAccessLink() {
+    setFormData((current) => ({
+      ...current,
+      onedrive_extra_access_links: [
+        ...current.onedrive_extra_access_links,
+        { label: '', url: '' },
+      ],
+    }));
+  }
+
+  function removeAccessLink(index: number) {
+    setFormData((current) => ({
+      ...current,
+      onedrive_extra_access_links: current.onedrive_extra_access_links.filter((_, linkIndex) => linkIndex !== index),
+    }));
+  }
+
+  async function copyToClipboard(value: string, successMessage: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      alert(successMessage);
+    } catch {
+      alert('Could not copy to clipboard.');
     }
   }
 
@@ -110,7 +197,7 @@ export default function HrAdmin() {
         carryover_days: carryover,
       });
       alert('Entitlement set!');
-      loadData(); // Reload to show updated values
+      loadData();
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -145,6 +232,9 @@ export default function HrAdmin() {
   if (loading) return <div className="loading-state">Loading HR admin tools...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
+  const configuredFolders = employees.filter((employee) => employee.onedrive_folder_url).length;
+  const sharedFolders = employees.filter((employee) => employee.onedrive_shared_with_employee).length;
+
   return (
     <div className="page-frame">
       <section className="hero-card">
@@ -163,8 +253,12 @@ export default function HrAdmin() {
               <span className="metric-value">{employees.length}</span>
             </div>
             <div className="metric-card">
-              <span className="metric-label">Blocked Days</span>
-              <span className="metric-value">{blockedDays.length}</span>
+              <span className="metric-label">OneDrive Configured</span>
+              <span className="metric-value">{configuredFolders}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Shared Confirmed</span>
+              <span className="metric-value">{sharedFolders}</span>
             </div>
           </div>
         </div>
@@ -192,53 +286,173 @@ export default function HrAdmin() {
               <h2>Employees</h2>
               <p>Maintain employee records, allowances, managers, and OneDrive links.</p>
             </div>
-            <button className="btn" onClick={() => setShowAddForm(!showAddForm)}>
-              {showAddForm ? 'Cancel' : 'Add Employee'}
+            <button className="btn" onClick={() => {
+              if (showAddForm && !editingEmployeeId) {
+                resetEmployeeForm();
+                return;
+              }
+              setFormData(createEmptyEmployeeForm());
+              setEditingEmployeeId(null);
+              setShowAddForm(true);
+            }}>
+              {showAddForm && !editingEmployeeId ? 'Cancel' : 'Add Employee'}
             </button>
           </div>
 
           {showAddForm && (
-            <form onSubmit={handleAddEmployee} className="surface-panel form-grid" style={{ marginTop: '1rem' }}>
-              <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
+            <form onSubmit={handleSaveEmployee} className="surface-panel stack" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
+              <div className="section-header">
+                <div>
+                  <h3 style={{ marginBottom: '0.35rem' }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h3>
+                  <p style={{ margin: 0 }}>
+                    Save the employee record, folder link, and any extra OneDrive links from one place.
+                  </p>
+                </div>
               </div>
-              <div className="form-group">
-                <label>Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                />
+
+              <div className="form-grid form-grid--two">
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Manager Email (Optional)</label>
+                  <input
+                    type="email"
+                    value={formData.manager_email}
+                    onChange={(e) => setFormData({ ...formData, manager_email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>OneDrive Folder URL (Optional)</label>
+                  <input
+                    type="url"
+                    value={formData.onedrive_folder_url}
+                    onChange={(e) => setFormData({ ...formData, onedrive_folder_url: e.target.value })}
+                    placeholder="https://yourcompany-my.sharepoint.com/..."
+                  />
+                  <small className="form-help">
+                    Paste the folder link that should open for this employee.
+                  </small>
+                </div>
               </div>
-              <div className="form-group">
-                <label>Manager Email (Optional)</label>
-                <input
-                  type="email"
-                  value={formData.manager_email}
-                  onChange={(e) => setFormData({ ...formData, manager_email: e.target.value })}
-                />
+
+              <div className="surface-panel stack" style={{ padding: '16px' }}>
+                <div className="section-header">
+                  <div>
+                    <h3 style={{ marginBottom: '0.35rem' }}>Sharing Workflow</h3>
+                    <p style={{ margin: 0 }}>
+                      This does not change OneDrive permissions automatically. It records your admin checklist in the app.
+                    </p>
+                  </div>
+                </div>
+                <label className="inline-actions" style={{ alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.onedrive_shared_with_employee}
+                    onChange={(e) => setFormData({ ...formData, onedrive_shared_with_employee: e.target.checked })}
+                  />
+                  <span>Shared with employee</span>
+                </label>
+                <div className="inline-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={!formData.onedrive_folder_url}
+                    onClick={() => window.open(formData.onedrive_folder_url, '_blank', 'noopener,noreferrer')}
+                  >
+                    Open Folder
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={!formData.onedrive_folder_url}
+                    onClick={() => copyToClipboard(formData.onedrive_folder_url, 'Folder link copied.')}
+                  >
+                    Copy Folder Link
+                  </button>
+                </div>
               </div>
-              <div className="form-group">
-                <label>OneDrive Folder URL (Optional)</label>
-                <input
-                  type="url"
-                  value={formData.onedrive_folder_url}
-                  onChange={(e) => setFormData({ ...formData, onedrive_folder_url: e.target.value })}
-                  placeholder="https://yourcompany-my.sharepoint.com/personal/..."
-                />
-                <small className="form-help">
-                  Each agent's personal OneDrive folder URL for file uploads
-                </small>
+
+              <div className="surface-panel stack" style={{ padding: '16px' }}>
+                <div className="section-header">
+                  <div>
+                    <h3 style={{ marginBottom: '0.35rem' }}>Extra Access Links</h3>
+                    <p style={{ margin: 0 }}>
+                      Add any extra share links for managers or other people who should also be able to open the same folder.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-secondary" onClick={addAccessLink}>
+                    Add Link
+                  </button>
+                </div>
+
+                {formData.onedrive_extra_access_links.length === 0 ? (
+                  <p className="muted-text" style={{ margin: 0 }}>No extra access links added yet.</p>
+                ) : (
+                  formData.onedrive_extra_access_links.map((link, index) => (
+                    <div key={`${index}-${link.label}`} className="form-grid form-grid--two">
+                      <div className="form-group">
+                        <label>Link Label</label>
+                        <input
+                          type="text"
+                          placeholder="e.g., Manager Share Link"
+                          value={link.label}
+                          onChange={(e) => updateAccessLink(index, 'label', e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Link URL</label>
+                        <input
+                          type="url"
+                          placeholder="https://..."
+                          value={link.url}
+                          onChange={(e) => updateAccessLink(index, 'url', e.target.value)}
+                        />
+                      </div>
+                      <div className="inline-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={!link.url}
+                          onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
+                        >
+                          Open Link
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={!link.url}
+                          onClick={() => copyToClipboard(link.url, `${link.label || 'Access'} link copied.`)}
+                        >
+                          Copy Link
+                        </button>
+                        <button type="button" className="btn btn-danger" onClick={() => removeAccessLink(index)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
+
               <div className="inline-actions">
                 <button type="submit" className="btn btn-success">Save Employee</button>
+                <button type="button" className="btn btn-secondary" onClick={resetEmployeeForm}>Cancel</button>
               </div>
             </form>
           )}
@@ -251,7 +465,7 @@ export default function HrAdmin() {
                   <th>Email</th>
                   <th>Manager</th>
                   <th>Leave Allowance ({new Date().getFullYear()})</th>
-                  <th>OneDrive</th>
+                  <th>OneDrive Workflow</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -277,25 +491,70 @@ export default function HrAdmin() {
                       )}
                     </td>
                     <td>
-                      {emp.onedrive_folder_url ? (
-                        <a href={emp.onedrive_folder_url} target="_blank" rel="noopener noreferrer">
-                          Open
-                        </a>
-                      ) : (
-                        <span className="muted-text">-</span>
-                      )}
+                      <div className="stack" style={{ gap: '10px' }}>
+                        <div className="inline-actions">
+                          <span className={`status-badge ${emp.onedrive_folder_url ? 'status-approved' : 'status-pending'}`}>
+                            {emp.onedrive_folder_url ? 'Folder linked' : 'Folder missing'}
+                          </span>
+                          <span className={`status-badge ${emp.onedrive_shared_with_employee ? 'status-approved' : 'status-neutral'}`}>
+                            {emp.onedrive_shared_with_employee ? 'Shared with employee' : 'Share not confirmed'}
+                          </span>
+                        </div>
+                        <div className="inline-actions">
+                          <button
+                            className="btn btn-secondary"
+                            disabled={!emp.onedrive_folder_url}
+                            onClick={() => window.open(emp.onedrive_folder_url, '_blank', 'noopener,noreferrer')}
+                          >
+                            Open Folder
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            disabled={!emp.onedrive_folder_url}
+                            onClick={() => copyToClipboard(emp.onedrive_folder_url, 'Folder link copied.')}
+                          >
+                            Copy Folder Link
+                          </button>
+                        </div>
+                        {emp.onedrive_extra_access_links?.length > 0 && (
+                          <div className="stack" style={{ gap: '8px' }}>
+                            {emp.onedrive_extra_access_links.map((link) => (
+                              <div key={`${emp.id}-${link.label}-${link.url}`} className="inline-actions">
+                                <span className="status-badge status-neutral">{link.label}</span>
+                                <a href={link.url} target="_blank" rel="noopener noreferrer">
+                                  Open
+                                </a>
+                                <button
+                                  className="btn btn-secondary"
+                                  onClick={() => copyToClipboard(link.url, `${link.label} copied.`)}
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleSetEntitlement(
-                          emp.id, 
-                          emp.leave_summary?.annual_allowance, 
-                          emp.leave_summary?.carryover
-                        )}
-                      >
-                        {emp.leave_summary?.entitlement_set ? 'Edit' : 'Set'} Entitlement
-                      </button>
+                      <div className="inline-actions">
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleEditEmployee(emp)}
+                        >
+                          Manage OneDrive
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleSetEntitlement(
+                            emp.id,
+                            emp.leave_summary?.annual_allowance,
+                            emp.leave_summary?.carryover
+                          )}
+                        >
+                          {emp.leave_summary?.entitlement_set ? 'Edit' : 'Set'} Entitlement
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -311,14 +570,14 @@ export default function HrAdmin() {
             <div>
               <h2>Blocked Days</h2>
               <p>
-            Block specific days to prevent leave requests from being approved on those dates. 
-            As an admin, you can still override and approve leave on blocked days if needed.
+                Block specific days to prevent leave requests from being approved on those dates.
+                As an admin, you can still override and approve leave on blocked days if needed.
               </p>
             </div>
           </div>
           
-          <button 
-            className="btn" 
+          <button
+            className="btn"
             onClick={() => setShowBlockedDayForm(!showBlockedDayForm)}
             style={{ marginBottom: '1rem' }}
           >
