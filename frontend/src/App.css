@@ -303,6 +303,14 @@
   border: 1px solid var(--color-border);
   border-radius: 24px;
   padding: 20px;
+  color: var(--color-text);
+}
+
+.surface-panel p,
+.surface-panel strong,
+.surface-panel span,
+.surface-panel small {
+  color: var(--color-text);
 }
 
 .alert {
@@ -416,12 +424,12 @@
 
 .summary-label {
   display: block;
-  color: #f4f8fc;
+  color: var(--color-muted-strong);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .summary-value {
@@ -452,7 +460,7 @@
 }
 
 .summary-card .muted-text {
-  color: rgba(244, 248, 252, 0.88);
+  color: var(--color-muted-strong);
 }
 
 .table-card {
