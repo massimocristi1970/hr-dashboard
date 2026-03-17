@@ -32,6 +32,17 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
   return response.json();
 }
 
+async function fetchOptional<T>(path: string, fallback: T, options: RequestInit = {}) {
+  try {
+    return await fetchAPI(path, options);
+  } catch (error: any) {
+    if (error?.message?.includes('404') || error?.message === 'Not found') {
+      return fallback;
+    }
+    throw error;
+  }
+}
+
 export const api = {
   getMe: () => fetchAPI('/api/me'),
   
@@ -140,7 +151,7 @@ export const api = {
       method: 'DELETE',
     }),
 
-  getMyAppraisals: () => fetchAPI('/api/appraisals/my'),
+  getMyAppraisals: () => fetchOptional('/api/appraisals/my', []),
 
   submitSelfReview: (id: number, data: {
     responses: Array<{
@@ -156,7 +167,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  getManagerAppraisals: () => fetchAPI('/api/appraisals/manager'),
+  getManagerAppraisals: () => fetchOptional('/api/appraisals/manager', []),
 
   submitManagerReview: (id: number, data: {
     responses: Array<{
@@ -173,7 +184,15 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  getAppraisalAdminData: () => fetchAPI('/api/admin/appraisals/settings'),
+  getAppraisalAdminData: () => fetchOptional('/api/admin/appraisals/settings', {
+    settings: {
+      cadence: 'quarterly',
+      self_review_deadline_days: 7,
+      manager_review_deadline_days: 7,
+    },
+    areas: [],
+    appraisals: [],
+  }),
 
   saveAppraisalSettings: (data: {
     cadence: 'monthly' | 'quarterly' | 'biannual' | 'annual';
