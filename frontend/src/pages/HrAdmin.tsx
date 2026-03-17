@@ -366,7 +366,7 @@ export default function HrAdmin() {
                     checked={formData.onedrive_shared_with_employee}
                     onChange={(e) => setFormData({ ...formData, onedrive_shared_with_employee: e.target.checked })}
                   />
-                  <span>Shared with employee</span>
+                  <span>I have shared this OneDrive folder with the employee</span>
                 </label>
                 <div className="inline-actions">
                   <button
@@ -497,7 +497,7 @@ export default function HrAdmin() {
                             {emp.onedrive_folder_url ? 'Folder linked' : 'Folder missing'}
                           </span>
                           <span className={`status-badge ${emp.onedrive_shared_with_employee ? 'status-approved' : 'status-neutral'}`}>
-                            {emp.onedrive_shared_with_employee ? 'Shared with employee' : 'Share not confirmed'}
+                            {emp.onedrive_shared_with_employee ? 'Employee access confirmed' : 'Employee access not confirmed'}
                           </span>
                         </div>
                         <div className="inline-actions">

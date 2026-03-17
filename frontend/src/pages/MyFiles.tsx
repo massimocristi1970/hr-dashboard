@@ -115,6 +115,9 @@ export default function MyFiles() {
               {onedriveSharedWithEmployee ? 'Access confirmed by HR' : 'Access not yet confirmed by HR'}
             </span>
           </div>
+          <p className="muted-text" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+            Sign in with your company Microsoft account when prompted. If the folder does not open, please contact HR.
+          </p>
           <a 
             href={onedriveFolderUrl} 
             target="_blank" 
