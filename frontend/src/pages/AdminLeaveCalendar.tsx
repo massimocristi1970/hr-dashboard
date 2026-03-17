@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import {
+  formatLocalDate,
+  getCalendarDaysForMonth,
+  getDatesInRange,
+  parseLocalDateString,
+} from '../lib/leaveCalendarDates';
 
 interface LeaveRequest {
   id: number;
@@ -35,18 +41,6 @@ function getEmployeeColor(employeeId: number): string {
     '#3b82f6', // blue
   ];
   return colors[employeeId % colors.length];
-}
-
-// Get all dates in a range (inclusive)
-function getDatesInRange(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().split('T')[0]);
-  }
-  return dates;
 }
 
 export default function AdminLeaveCalendar() {
@@ -106,39 +100,7 @@ export default function AdminLeaveCalendar() {
 
   // Get calendar data for the current month
   function getCalendarDays(): (Date | null)[][] {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    
-    const weeks: (Date | null)[][] = [];
-    let currentWeek: (Date | null)[] = [];
-    
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < firstDay.getDay(); i++) {
-      currentWeek.push(null);
-    }
-    
-    // Add all days of the month
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-      currentWeek.push(new Date(year, month, day));
-      
-      if (currentWeek.length === 7) {
-        weeks.push(currentWeek);
-        currentWeek = [];
-      }
-    }
-    
-    // Fill remaining cells in the last week
-    while (currentWeek.length > 0 && currentWeek.length < 7) {
-      currentWeek.push(null);
-    }
-    if (currentWeek.length > 0) {
-      weeks.push(currentWeek);
-    }
-    
-    return weeks;
+    return getCalendarDaysForMonth(currentDate);
   }
 
   function previousMonth() {
@@ -165,7 +127,7 @@ export default function AdminLeaveCalendar() {
 
   const leaveMap = buildLeaveMap();
   const calendarWeeks = getCalendarDays();
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate(new Date());
 
   // Get unique employees who have approved leave
   const employeesWithLeave = Array.from(
@@ -252,7 +214,7 @@ export default function AdminLeaveCalendar() {
                 return <div key={`empty-${weekIndex}-${dayIndex}`} className="calendar-cell empty" />;
               }
               
-              const dateStr = day.toISOString().split('T')[0];
+              const dateStr = formatLocalDate(day);
               const leaveOnDay = leaveMap.get(dateStr) || [];
               const isToday = dateStr === today;
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
@@ -313,7 +275,7 @@ export default function AdminLeaveCalendar() {
             <span className="summary-label">Total Days This Month</span>
             <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
               {Array.from(leaveMap.keys()).filter(date => {
-                const d = new Date(date);
+                const d = parseLocalDateString(date);
                 return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
               }).reduce((sum, date) => sum + (leaveMap.get(date)?.length || 0), 0)} person-days
             </p>
