@@ -43,6 +43,7 @@ function getEmployeeColor(employeeId: number): string {
 
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [adminLeaveRequests, setAdminLeaveRequests] = useState<LeaveRequest[]>([]);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,18 +57,27 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, meData] = await Promise.all([
-        api.getAllRequests(),
+      const [calendarData, meData] = await Promise.all([
+        api.getLeaveCalendar(),
         api.getMe(),
       ]);
 
-      // Filter to only approved leave
-      const approvedRequests = requestsData.filter(
+      const approvedRequests = calendarData.filter(
         (req: LeaveRequest) => req.status === "approved",
       );
 
       setLeaveRequests(approvedRequests);
       setUserInfo(meData);
+
+      if (meData.isAdmin) {
+        const requestsData = await api.getAllRequests();
+        const approvedAdminRequests = requestsData.filter(
+          (req: LeaveRequest) => req.status === "approved",
+        );
+        setAdminLeaveRequests(approvedAdminRequests);
+      } else {
+        setAdminLeaveRequests([]);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -336,7 +346,7 @@ export default function AdminLeaveCalendar() {
       {userInfo?.isAdmin && (
         <section className="card table-card">
           <h3>Approved Leave Details</h3>
-          {leaveRequests.length === 0 ? (
+          {adminLeaveRequests.length === 0 ? (
             <div className="empty-state">No approved leave requests.</div>
           ) : (
             <div className="table-wrap">
@@ -352,7 +362,7 @@ export default function AdminLeaveCalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {leaveRequests
+                  {adminLeaveRequests
                     .filter(
                       (req) =>
                         selectedEmployee === "all" ||
