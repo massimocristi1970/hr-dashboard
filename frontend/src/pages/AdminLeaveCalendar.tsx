@@ -20,12 +20,6 @@ interface LeaveRequest {
   email: string;
 }
 
-interface Employee {
-  id: number;
-  full_name: string;
-  email: string;
-}
-
 interface UserInfo {
   isAdmin: boolean;
 }
@@ -49,7 +43,6 @@ function getEmployeeColor(employeeId: number): string {
 
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,9 +56,8 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, employeesData, meData] = await Promise.all([
+      const [requestsData, meData] = await Promise.all([
         api.getAllRequests(),
-        api.getAllEmployees(),
         api.getMe(),
       ]);
 
@@ -75,7 +67,6 @@ export default function AdminLeaveCalendar() {
       );
 
       setLeaveRequests(approvedRequests);
-      setEmployees(employeesData);
       setUserInfo(meData);
     } catch (err: any) {
       setError(err.message);

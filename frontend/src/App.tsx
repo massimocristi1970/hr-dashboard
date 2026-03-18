@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import MyDashboard from './pages/MyDashboard';
 import RequestLeave from './pages/RequestLeave';
@@ -6,16 +6,58 @@ import MyFiles from './pages/MyFiles';
 import ManagerApprovals from './pages/ManagerApprovals';
 import HrAdmin from './pages/HrAdmin';
 import AdminLeaveCalendar from './pages/AdminLeaveCalendar';
+import { api } from './lib/api';
 import './App.css';
+
+interface UserInfo {
+  isAdmin: boolean;
+}
 
 function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [roleReady, setRoleReady] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const email = localStorage.getItem('dev_email');
     setCurrentUser(email);
+    setSessionReady(true);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUserInfo() {
+      setRoleReady(false);
+
+      if (!currentUser) {
+        setUserInfo(null);
+        setRoleReady(true);
+        return;
+      }
+
+      try {
+        const meData = await api.getMe();
+        if (!cancelled) {
+          setUserInfo(meData);
+          setRoleReady(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setUserInfo(null);
+          setRoleReady(true);
+        }
+      }
+    }
+
+    loadUserInfo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   function handleLogout() {
     localStorage.removeItem('dev_email');
@@ -31,6 +73,9 @@ function App() {
       window.location.reload();
     }
   }
+
+  const canRenderAdminRoutes = sessionReady && roleReady;
+  const isAdmin = userInfo?.isAdmin === true;
 
   return (
     <BrowserRouter>
@@ -80,12 +125,16 @@ function App() {
               <NavLink to="/my-files" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
                 My Files
               </NavLink>
-              <NavLink to="/manager" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
-                Manager Approvals
-              </NavLink>
-              <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
-                HR Admin
-              </NavLink>
+              {isAdmin && (
+                <NavLink to="/manager" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                  Manager Approvals
+                </NavLink>
+              )}
+              {isAdmin && (
+                <NavLink to="/admin" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
+                  HR Admin
+                </NavLink>
+              )}
               <NavLink to="/leave-calendar" onClick={() => setMenuOpen(false)} className={({ isActive }) => `btn btn-secondary${isActive ? ' active' : ''}`}>
                 Leave Calendar
               </NavLink>
@@ -109,8 +158,8 @@ function App() {
             <Route path="/" element={<MyDashboard />} />
             <Route path="/request-leave" element={<RequestLeave />} />
             <Route path="/my-files" element={<MyFiles />} />
-            <Route path="/manager" element={<ManagerApprovals />} />
-            <Route path="/admin" element={<HrAdmin />} />
+            <Route path="/manager" element={!canRenderAdminRoutes ? <div className="loading-state">Loading access...</div> : isAdmin ? <ManagerApprovals /> : <Navigate to="/" replace />} />
+            <Route path="/admin" element={!canRenderAdminRoutes ? <div className="loading-state">Loading access...</div> : isAdmin ? <HrAdmin /> : <Navigate to="/" replace />} />
             <Route path="/leave-calendar" element={<AdminLeaveCalendar />} />
           </Routes>
         </main>

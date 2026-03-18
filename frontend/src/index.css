@@ -43,6 +43,24 @@
     --shadow-soft: 0 20px 52px rgba(0, 0, 0, 0.35);
     --shadow-panel: 0 30px 70px rgba(0, 0, 0, 0.45);
   }
+
+  input,
+  select,
+  textarea {
+    background: rgba(11, 19, 30, 0.82);
+    border-color: rgba(226, 236, 248, 0.16);
+    color: #f5f9ff;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #d3dfeb;
+  }
+
+  select option {
+    background: #132132;
+    color: #f5f9ff;
+  }
 }
 
 * {

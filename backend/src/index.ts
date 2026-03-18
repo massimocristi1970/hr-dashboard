@@ -5,6 +5,8 @@ interface Env {
   HR_ADMIN_EMAILS: string;
 }
 
+const SELF_MANAGED_APPROVER_EMAIL = 'massimo@tictockloans.com';
+
 // Validation schemas
 // Helper to allow empty strings as optional
 const optionalEmail = z.string().email().optional().or(z.literal(''));
@@ -120,6 +122,10 @@ function getUserEmail(req: Request): string | null {
 function isHrAdmin(email: string, env: Env): boolean {
   const adminEmails = env.HR_ADMIN_EMAILS.split(',').map(e => e.trim().toLowerCase());
   return adminEmails.includes(email.toLowerCase());
+}
+
+function isSelfManagedApprover(email: string): boolean {
+  return email.trim().toLowerCase() === SELF_MANAGED_APPROVER_EMAIL;
 }
 
 // Helper: Calculate days between two dates with half day support
@@ -475,13 +481,25 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
     // Get pending requests for manager (with conflict info)
     if (path === '/api/leave/pending' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const allowSelfManagedApprovals = isSelfManagedApprover(userEmail) ? 1 : 0;
       const requests = await env.hr_dashboard_db.prepare(`
         SELECT lr.*, e.full_name, e.email 
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
-        WHERE e.manager_email = ? AND lr.status = 'pending'
+        WHERE lr.status = 'pending'
+        AND (
+          e.manager_email = ?
+          OR (? = 1 AND e.email = ?)
+        )
         ORDER BY lr.created_at ASC
-      `).bind(userEmail).all();
+      `).bind(userEmail, allowSelfManagedApprovals, userEmail).all();
 
       // For each request, find conflicts and blocked days
       const requestsWithConflicts = await Promise.all(
@@ -560,13 +578,22 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     }
 
     if (path === '/api/appraisals/manager' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const allowSelfManagedApprovals = isSelfManagedApprover(userEmail) ? 1 : 0;
       const appraisals = await env.hr_dashboard_db.prepare(`
         SELECT a.id
         FROM appraisals a
         JOIN employees e ON e.id = a.employee_id
         WHERE a.manager_email = ?
+        OR (? = 1 AND e.email = ?)
         ORDER BY a.manager_review_due_date ASC, a.created_at DESC
-      `).bind(userEmail).all();
+      `).bind(userEmail, allowSelfManagedApprovals, userEmail).all();
 
       const detailed = await Promise.all(
         (appraisals.results as any[]).map((appraisal) => getAppraisalDetail(env, appraisal.id))
@@ -675,7 +702,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      if (appraisal.manager_email !== userEmail && !isAdmin) {
+      const canSelfManageAppraisal = isSelfManagedApprover(userEmail) && appraisal.email === userEmail;
+      if (appraisal.manager_email !== userEmail && !canSelfManageAppraisal && !isAdmin) {
         return new Response(JSON.stringify({ error: 'Not authorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders() },
@@ -748,7 +776,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       // Check if user is manager for this request
       const request = await env.hr_dashboard_db.prepare(`
-        SELECT lr.*, e.manager_email
+        SELECT lr.*, e.manager_email, e.email AS employee_email
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
@@ -761,7 +789,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         });
       }
 
-      if (request.manager_email !== userEmail && !isAdmin) {
+      const canSelfManageRequest = isSelfManagedApprover(userEmail) && request.employee_email === userEmail;
+      if (request.manager_email !== userEmail && !canSelfManageRequest && !isAdmin) {
         return new Response(JSON.stringify({ error: 'Not authorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders() },
@@ -1146,7 +1175,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       const employees = await env.hr_dashboard_db.prepare(`
-        SELECT id, manager_email
+        SELECT id, email, manager_email
         FROM employees
         ORDER BY full_name ASC
       `).all();
@@ -1168,7 +1197,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'self_review_pending', ?, datetime('now'))
         `).bind(
           employee.id,
-          employee.manager_email || null,
+          isSelfManagedApprover(employee.email) ? employee.email : employee.manager_email || null,
           validated.cycle_label.trim(),
           settings.cadence,
           validated.cycle_start_date,
@@ -1308,7 +1337,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       // Get the leave request details
       const request = await env.hr_dashboard_db.prepare(`
-        SELECT lr.*, e.manager_email
+        SELECT lr.*, e.manager_email, e.email AS employee_email
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
@@ -1322,7 +1351,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       // Check if user is manager for this request or admin
-      if (request.manager_email !== userEmail && !isAdmin) {
+      const canSelfManageRequest = isSelfManagedApprover(userEmail) && request.employee_email === userEmail;
+      if (request.manager_email !== userEmail && !canSelfManageRequest && !isAdmin) {
         return new Response(JSON.stringify({ error: 'Not authorized' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders() },

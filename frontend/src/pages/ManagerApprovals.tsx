@@ -78,13 +78,20 @@ export default function ManagerApprovals() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, meData, appraisalsData] = await Promise.all([
+      const meData = await api.getMe();
+      setUserInfo(meData);
+
+      if (!meData.isAdmin) {
+        setRequests([]);
+        setAppraisals([]);
+        return;
+      }
+
+      const [requestsData, appraisalsData] = await Promise.all([
         api.getPendingRequests(),
-        api.getMe(),
         api.getManagerAppraisals(),
       ]);
       setRequests(requestsData);
-      setUserInfo(meData);
       setAppraisals(appraisalsData);
     } catch (err: any) {
       setError(err.message);
@@ -182,6 +189,7 @@ export default function ManagerApprovals() {
 
   if (loading) return <div className="loading-state">Loading approval queue...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
+  if (!userInfo?.isAdmin) return <div className="error-state">Access denied: Manager approvals are available to admins only.</div>;
 
   function formatLeaveType(type: PendingRequest['leave_type']) {
     if (type === 'annual') return 'Annual Leave';

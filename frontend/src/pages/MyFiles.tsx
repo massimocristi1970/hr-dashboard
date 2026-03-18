@@ -112,7 +112,7 @@ export default function MyFiles() {
           <p>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
           <div className="inline-actions" style={{ marginTop: '0.5rem' }}>
             <span className={`status-badge ${onedriveSharedWithEmployee ? 'status-approved' : 'status-neutral'}`}>
-              {onedriveSharedWithEmployee ? 'Access confirmed by HR' : 'Access not yet confirmed by HR'}
+              {onedriveSharedWithEmployee ? 'HR sharing marked complete' : 'HR sharing still needs marking by HR'}
             </span>
           </div>
           <p className="muted-text" style={{ marginTop: '0.75rem', marginBottom: 0 }}>

@@ -321,6 +321,32 @@
   font-weight: 600;
 }
 
+@media (prefers-color-scheme: dark) {
+  .surface-panel,
+  .summary-card {
+    background: rgba(20, 31, 45, 0.88);
+    border-color: rgba(226, 236, 248, 0.14);
+  }
+
+  .surface-panel p,
+  .surface-panel strong,
+  .surface-panel span,
+  .surface-panel small,
+  .surface-panel label,
+  .summary-card p,
+  .summary-card span,
+  .summary-card strong {
+    color: #f3f8ff;
+  }
+
+  .surface-panel .section-header p,
+  .surface-panel .muted-text,
+  .surface-panel p.muted-text,
+  .summary-card .muted-text {
+    color: #d8e3ee;
+  }
+}
+
 .alert {
   padding: 1rem 1.1rem;
   border-radius: 18px;
