@@ -191,6 +191,35 @@ export default function HrAdmin() {
     }
   }
 
+  async function handleToggleEmployeeSharing(employee: Employee, shared: boolean) {
+    try {
+      await api.addEmployee({
+        ...mapEmployeeToForm(employee),
+        manager_email: employee.manager_email || undefined,
+        onedrive_folder_url: employee.onedrive_folder_url || undefined,
+        onedrive_shared_with_employee: shared,
+        onedrive_extra_access_links: employee.onedrive_extra_access_links || [],
+      });
+
+      setEmployees((current) =>
+        current.map((emp) =>
+          emp.id === employee.id
+            ? { ...emp, onedrive_shared_with_employee: shared }
+            : emp
+        )
+      );
+
+      if (editingEmployeeId === employee.id) {
+        setFormData((current) => ({
+          ...current,
+          onedrive_shared_with_employee: shared,
+        }));
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   function handleEditEmployee(employee: Employee) {
     setFormData(mapEmployeeToForm(employee));
     setEditingEmployeeId(employee.id);
@@ -619,10 +648,20 @@ export default function HrAdmin() {
                           <span className={`status-badge ${emp.onedrive_folder_url ? 'status-approved' : 'status-pending'}`}>
                             {emp.onedrive_folder_url ? 'Folder linked' : 'Folder missing'}
                           </span>
-                          <span className={`status-badge ${emp.onedrive_shared_with_employee ? 'status-approved' : 'status-neutral'}`}>
-                            {emp.onedrive_shared_with_employee ? 'HR sharing marked complete' : 'HR sharing not marked complete'}
-                          </span>
+                          <label className="inline-actions" style={{ alignItems: 'center', gap: '8px' }}>
+                            <span className={`status-badge ${emp.onedrive_shared_with_employee ? 'status-approved' : 'status-neutral'}`}>
+                              HR Sharing
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={emp.onedrive_shared_with_employee}
+                              disabled={!emp.onedrive_folder_url}
+                              onChange={(e) => handleToggleEmployeeSharing(emp, e.target.checked)}
+                              style={{ width: 'auto' }}
+                            />
+                          </label>
                         </div>
+                        <small className="muted-text">Tick once the employee confirms they can open the folder.</small>
                         <div className="inline-actions">
                           <button
                             className="btn btn-secondary"
