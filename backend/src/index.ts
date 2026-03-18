@@ -5,7 +5,10 @@ interface Env {
   HR_ADMIN_EMAILS: string;
 }
 
-const SELF_MANAGED_APPROVER_EMAIL = 'massimo@tictockloans.com';
+const SELF_MANAGED_APPROVER_EMAILS = new Set([
+  'massimo@tictockloans.com',
+  'massimo@ticktockloans.com',
+]);
 
 // Validation schemas
 // Helper to allow empty strings as optional
@@ -125,7 +128,7 @@ function isHrAdmin(email: string, env: Env): boolean {
 }
 
 function isSelfManagedApprover(email: string): boolean {
-  return email.trim().toLowerCase() === SELF_MANAGED_APPROVER_EMAIL;
+  return SELF_MANAGED_APPROVER_EMAILS.has(email.trim().toLowerCase());
 }
 
 // Helper: Calculate days between two dates with half day support
