@@ -63,13 +63,51 @@ interface ManagerAppraisal {
   responses: AppraisalResponse[];
 }
 
+interface ManagerReviewDraftResponse {
+  area_id: number;
+  title: string;
+  description?: string | null;
+  observations: string;
+  evidence: string;
+  focus: string;
+  support_commitment: string;
+  trajectory: 'growing' | 'steady' | 'ready_for_more' | 'needs_support' | '';
+}
+
+function buildManagerReviewDraft(appraisal: ManagerAppraisal): ManagerReviewDraftResponse[] {
+  return appraisal.responses.map((response) => ({
+    area_id: response.area_id || response.id || 0,
+    title: response.title,
+    description: response.description,
+    observations: response.manager_observations || '',
+    evidence: response.manager_evidence || response.employee_evidence || '',
+    focus: response.manager_focus || response.employee_focus || '',
+    support_commitment: response.manager_support_commitment || '',
+    trajectory: response.manager_trajectory || '',
+  }));
+}
+
+function hasManagerReviewProgress(appraisal: ManagerAppraisal): boolean {
+  return appraisal.responses.some((response) =>
+    Boolean(
+      response.manager_observations ||
+      response.manager_evidence ||
+      response.manager_focus ||
+      response.manager_support_commitment ||
+      response.manager_trajectory
+    )
+  );
+}
+
 export default function ManagerApprovals() {
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [appraisals, setAppraisals] = useState<ManagerAppraisal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [submittingAppraisalId, setSubmittingAppraisalId] = useState<number | null>(null);
+  const [editingAppraisalId, setEditingAppraisalId] = useState<number | null>(null);
+  const [savingAppraisalId, setSavingAppraisalId] = useState<number | null>(null);
+  const [managerReviewDrafts, setManagerReviewDrafts] = useState<Record<number, ManagerReviewDraftResponse[]>>({});
 
   useEffect(() => {
     loadData();
@@ -162,28 +200,65 @@ export default function ManagerApprovals() {
     }
   }
 
-  async function handleCompleteAppraisal(appraisal: ManagerAppraisal) {
-    const responses = appraisal.responses.map((response) => ({
-      area_id: response.area_id || response.id || 0,
-      observations: prompt(`Manager observations for ${response.title}:`, response.manager_observations || '') || '',
-      evidence: prompt(`Evidence for ${response.title}:`, response.manager_evidence || response.employee_evidence || '') || '',
-      focus: prompt(`Manager focus for ${response.title}:`, response.manager_focus || response.employee_focus || '') || '',
-      support_commitment: prompt(`Support commitment for ${response.title}:`, response.manager_support_commitment || '') || '',
-      trajectory: (prompt(
-        `Trajectory for ${response.title} (growing, steady, ready_for_more, needs_support):`,
-        response.manager_trajectory || 'steady'
-      ) || 'steady') as 'growing' | 'steady' | 'ready_for_more' | 'needs_support',
+  function beginManagerReview(appraisal: ManagerAppraisal) {
+    setManagerReviewDrafts((current) => ({
+      ...current,
+      [appraisal.id]: buildManagerReviewDraft(appraisal),
     }));
+    setEditingAppraisalId(appraisal.id);
+  }
+
+  function updateManagerReviewDraft(
+    appraisalId: number,
+    areaId: number,
+    field: 'observations' | 'evidence' | 'focus' | 'support_commitment' | 'trajectory',
+    value: string
+  ) {
+    setManagerReviewDrafts((current) => ({
+      ...current,
+      [appraisalId]: (current[appraisalId] || []).map((response) =>
+        response.area_id === areaId ? { ...response, [field]: value } : response
+      ),
+    }));
+  }
+
+  async function saveManagerReview(
+    appraisal: ManagerAppraisal,
+    options: { submit: boolean; closeAfter: boolean; successMessage: string }
+  ) {
+    const draftResponses = managerReviewDrafts[appraisal.id] || buildManagerReviewDraft(appraisal);
 
     try {
-      setSubmittingAppraisalId(appraisal.id);
-      await api.submitManagerReview(appraisal.id, { responses });
-      alert('Appraisal completed.');
-      loadData();
+      setSavingAppraisalId(appraisal.id);
+      const updated = await api.submitManagerReview(appraisal.id, {
+        responses: draftResponses.map((response) => ({
+          area_id: response.area_id,
+          observations: response.observations,
+          evidence: response.evidence,
+          focus: response.focus,
+          support_commitment: response.support_commitment,
+          trajectory: response.trajectory || undefined,
+        })),
+        submit: options.submit,
+      });
+
+      setAppraisals((current) =>
+        current.map((item) => (item.id === appraisal.id ? updated : item))
+      );
+      setManagerReviewDrafts((current) => ({
+        ...current,
+        [appraisal.id]: buildManagerReviewDraft(updated),
+      }));
+
+      if (options.closeAfter || options.submit) {
+        setEditingAppraisalId(null);
+      }
+
+      alert(options.successMessage);
     } catch (err: any) {
       alert('Error: ' + err.message);
     } finally {
-      setSubmittingAppraisalId(null);
+      setSavingAppraisalId(null);
     }
   }
 
@@ -267,56 +342,177 @@ export default function ManagerApprovals() {
                   <span className="status-badge status-neutral">Manager due {appraisal.manager_review_due_date}</span>
                 </div>
                 <div className="stack">
-                  {appraisal.responses.map((response, index) => (
-                    <div key={`${appraisal.id}-${response.area_id || response.id || index}`} className="surface-panel stack" style={{ padding: '12px' }}>
-                      <div>
-                        <strong>{response.title}</strong>
-                        {response.description ? (
-                          <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
-                        ) : null}
-                      </div>
-                      <div className="form-grid form-grid--two">
-                        <div>
-                          <strong>Employee Strengths</strong>
-                          <p>{response.employee_strengths || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Employee Evidence</strong>
-                          <p>{response.employee_evidence || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Employee Focus</strong>
-                          <p>{response.employee_focus || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Support Needed</strong>
-                          <p>{response.employee_support_needed || '-'}</p>
-                        </div>
-                      </div>
-                      {appraisal.status === 'completed' && (
-                        <div className="form-grid form-grid--two">
+                  {(editingAppraisalId === appraisal.id
+                    ? (managerReviewDrafts[appraisal.id] || buildManagerReviewDraft(appraisal)).map((response) => (
+                        <div key={`${appraisal.id}-${response.area_id}`} className="surface-panel stack" style={{ padding: '12px' }}>
                           <div>
-                            <strong>Manager Observations</strong>
-                            <p>{response.manager_observations || '-'}</p>
+                            <strong>{response.title}</strong>
+                            {response.description ? (
+                              <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
+                            ) : null}
                           </div>
-                          <div>
-                            <strong>Trajectory</strong>
-                            <p>{response.manager_trajectory ? response.manager_trajectory.replace(/_/g, ' ') : '-'}</p>
+                          <div className="form-grid form-grid--two">
+                            <div>
+                              <strong>Employee Strengths</strong>
+                              <p>{appraisal.responses.find((item) => (item.area_id || item.id || 0) === response.area_id)?.employee_strengths || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Employee Evidence</strong>
+                              <p>{appraisal.responses.find((item) => (item.area_id || item.id || 0) === response.area_id)?.employee_evidence || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Employee Focus</strong>
+                              <p>{appraisal.responses.find((item) => (item.area_id || item.id || 0) === response.area_id)?.employee_focus || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Support Needed</strong>
+                              <p>{appraisal.responses.find((item) => (item.area_id || item.id || 0) === response.area_id)?.employee_support_needed || '-'}</p>
+                            </div>
+                          </div>
+                          <div className="form-grid form-grid--two">
+                            <div className="form-group">
+                              <label>Manager Observations</label>
+                              <textarea
+                                rows={4}
+                                value={response.observations}
+                                onChange={(e) => updateManagerReviewDraft(appraisal.id, response.area_id, 'observations', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Evidence</label>
+                              <textarea
+                                rows={4}
+                                value={response.evidence}
+                                onChange={(e) => updateManagerReviewDraft(appraisal.id, response.area_id, 'evidence', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Manager Focus</label>
+                              <textarea
+                                rows={4}
+                                value={response.focus}
+                                onChange={(e) => updateManagerReviewDraft(appraisal.id, response.area_id, 'focus', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Support Commitment</label>
+                              <textarea
+                                rows={4}
+                                value={response.support_commitment}
+                                onChange={(e) => updateManagerReviewDraft(appraisal.id, response.area_id, 'support_commitment', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Trajectory</label>
+                              <select
+                                value={response.trajectory}
+                                onChange={(e) => updateManagerReviewDraft(appraisal.id, response.area_id, 'trajectory', e.target.value)}
+                              >
+                                <option value="">Select trajectory</option>
+                                <option value="growing">Growing</option>
+                                <option value="steady">Steady</option>
+                                <option value="ready_for_more">Ready for More</option>
+                                <option value="needs_support">Needs Support</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      ))
+                    : appraisal.responses.map((response, index) => (
+                        <div key={`${appraisal.id}-${response.area_id || response.id || index}`} className="surface-panel stack" style={{ padding: '12px' }}>
+                          <div>
+                            <strong>{response.title}</strong>
+                            {response.description ? (
+                              <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
+                            ) : null}
+                          </div>
+                          <div className="form-grid form-grid--two">
+                            <div>
+                              <strong>Employee Strengths</strong>
+                              <p>{response.employee_strengths || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Employee Evidence</strong>
+                              <p>{response.employee_evidence || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Employee Focus</strong>
+                              <p>{response.employee_focus || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Support Needed</strong>
+                              <p>{response.employee_support_needed || '-'}</p>
+                            </div>
+                          </div>
+                          {(appraisal.status === 'completed' || response.manager_observations || response.manager_focus || response.manager_support_commitment || response.manager_trajectory) && (
+                            <div className="form-grid form-grid--two">
+                              <div>
+                                <strong>Manager Observations</strong>
+                                <p>{response.manager_observations || '-'}</p>
+                              </div>
+                              <div>
+                                <strong>Trajectory</strong>
+                                <p>{response.manager_trajectory ? response.manager_trajectory.replace(/_/g, ' ') : '-'}</p>
+                              </div>
+                              <div>
+                                <strong>Manager Focus</strong>
+                                <p>{response.manager_focus || '-'}</p>
+                              </div>
+                              <div>
+                                <strong>Support Commitment</strong>
+                                <p>{response.manager_support_commitment || '-'}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )))}
                 </div>
                 {appraisal.status === 'manager_review_pending' && (
                   <div className="inline-actions">
-                    <button
-                      className="btn btn-success"
-                      disabled={submittingAppraisalId === appraisal.id}
-                      onClick={() => handleCompleteAppraisal(appraisal)}
-                    >
-                      {submittingAppraisalId === appraisal.id ? 'Submitting...' : 'Complete Appraisal'}
-                    </button>
+                    {editingAppraisalId === appraisal.id ? (
+                      <>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveManagerReview(appraisal, {
+                            submit: false,
+                            closeAfter: false,
+                            successMessage: 'Manager review draft saved.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Saving...' : 'Save Draft'}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveManagerReview(appraisal, {
+                            submit: false,
+                            closeAfter: true,
+                            successMessage: 'Progress saved. You can continue later.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Saving...' : 'Cancel'}
+                        </button>
+                        <button
+                          className="btn btn-success"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveManagerReview(appraisal, {
+                            submit: true,
+                            closeAfter: true,
+                            successMessage: 'Manager review completed.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Submitting...' : 'Submit Review'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn btn-success"
+                        onClick={() => beginManagerReview(appraisal)}
+                      >
+                        {hasManagerReviewProgress(appraisal) ? 'Edit Review' : 'Start Review'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

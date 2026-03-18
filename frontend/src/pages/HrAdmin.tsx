@@ -375,6 +375,20 @@ export default function HrAdmin() {
     }
   }
 
+  async function handleResetSelfReflection(appraisalId: number, employeeName: string) {
+    if (!confirm(`Reset the self-reflection for ${employeeName}? This will clear the employee and manager appraisal responses so it can be resubmitted.`)) {
+      return;
+    }
+
+    try {
+      await api.resetAppraisalSelfReview(appraisalId);
+      alert('Self-reflection reset.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   if (loading) return <div className="loading-state">Loading HR admin tools...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
@@ -1016,12 +1030,13 @@ export default function HrAdmin() {
                   <th>Self Review Due</th>
                   <th>Manager Due</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {appraisalAdmin.appraisals.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="empty-state">No appraisal cycles launched yet.</div>
                     </td>
                   </tr>
@@ -1051,6 +1066,18 @@ export default function HrAdmin() {
                         }`}>
                           {appraisal.status.replace(/_/g, ' ')}
                         </span>
+                      </td>
+                      <td>
+                        {appraisal.status !== 'self_review_pending' ? (
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => handleResetSelfReflection(appraisal.id, appraisal.full_name)}
+                          >
+                            Reset Self-Reflection
+                          </button>
+                        ) : (
+                          <span className="muted-text">No action</span>
+                        )}
                       </td>
                     </tr>
                   ))

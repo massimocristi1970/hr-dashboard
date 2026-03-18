@@ -90,6 +90,7 @@ const AppraisalSelfReviewSchema = z.object({
     focus: z.string().optional(),
     support_needed: z.string().optional(),
   })).min(1),
+  submit: z.boolean().optional(),
 });
 
 const AppraisalManagerReviewSchema = z.object({
@@ -99,8 +100,9 @@ const AppraisalManagerReviewSchema = z.object({
     evidence: z.string().optional(),
     focus: z.string().optional(),
     support_commitment: z.string().optional(),
-    trajectory: AppraisalTrajectorySchema,
+    trajectory: AppraisalTrajectorySchema.optional(),
   })).min(1),
+  submit: z.boolean().optional(),
 });
 
 const AppraisalLaunchSchema = z.object({
@@ -640,6 +642,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const body = await req.json();
       const validated = AppraisalSelfReviewSchema.parse(body);
+      const shouldSubmit = validated.submit === true;
 
       for (const response of validated.responses) {
         await env.hr_dashboard_db.prepare(`
@@ -670,11 +673,17 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       await env.hr_dashboard_db.prepare(`
         UPDATE appraisals
-        SET status = 'manager_review_pending',
-            employee_submitted_at = datetime('now'),
+        SET status = ?,
+            employee_submitted_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+            manager_completed_at = CASE WHEN ? = 1 THEN manager_completed_at ELSE NULL END,
             updated_at = datetime('now')
         WHERE id = ?
-      `).bind(appraisalId).run();
+      `).bind(
+        shouldSubmit ? 'manager_review_pending' : 'self_review_pending',
+        shouldSubmit ? 1 : 0,
+        shouldSubmit ? 1 : 0,
+        appraisalId
+      ).run();
 
       const updated = await getAppraisalDetail(env, appraisalId);
       return new Response(JSON.stringify(updated), {
@@ -693,9 +702,10 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const appraisalId = parseInt(match[1]);
       const appraisal = await env.hr_dashboard_db.prepare(`
-        SELECT *
-        FROM appraisals
-        WHERE id = ?
+        SELECT a.*, e.email
+        FROM appraisals a
+        JOIN employees e ON e.id = a.employee_id
+        WHERE a.id = ?
       `).bind(appraisalId).first() as any;
 
       if (!appraisal) {
@@ -715,6 +725,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const body = await req.json();
       const validated = AppraisalManagerReviewSchema.parse(body);
+      const shouldSubmit = validated.submit === true;
 
       for (const response of validated.responses) {
         await env.hr_dashboard_db.prepare(`
@@ -742,14 +753,74 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           normalizeText(response.evidence),
           normalizeText(response.focus),
           normalizeText(response.support_commitment),
-          response.trajectory
+          response.trajectory || null
         ).run();
       }
 
       await env.hr_dashboard_db.prepare(`
         UPDATE appraisals
-        SET status = 'completed',
-            manager_completed_at = datetime('now'),
+        SET status = ?,
+            manager_completed_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(
+        shouldSubmit ? 'completed' : 'manager_review_pending',
+        shouldSubmit ? 1 : 0,
+        appraisalId
+      ).run();
+
+      const updated = await getAppraisalDetail(env, appraisalId);
+      return new Response(JSON.stringify(updated), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/\/api\/admin\/appraisals\/\d+\/reset-self-review/) && method === 'PUT') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/\/api\/admin\/appraisals\/(\d+)\/reset-self-review/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const appraisalId = parseInt(match[1]);
+      const appraisal = await getAppraisalDetail(env, appraisalId);
+
+      if (!appraisal) {
+        return new Response(JSON.stringify({ error: 'Appraisal not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE appraisal_area_responses
+        SET employee_strengths = NULL,
+            employee_evidence = NULL,
+            employee_focus = NULL,
+            employee_support_needed = NULL,
+            manager_observations = NULL,
+            manager_evidence = NULL,
+            manager_focus = NULL,
+            manager_support_commitment = NULL,
+            manager_trajectory = NULL,
+            updated_at = datetime('now')
+        WHERE appraisal_id = ?
+      `).bind(appraisalId).run();
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE appraisals
+        SET status = 'self_review_pending',
+            employee_submitted_at = NULL,
+            manager_completed_at = NULL,
             updated_at = datetime('now')
         WHERE id = ?
       `).bind(appraisalId).run();

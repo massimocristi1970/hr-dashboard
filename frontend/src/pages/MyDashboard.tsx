@@ -43,12 +43,47 @@ interface Appraisal {
   responses: AppraisalResponse[];
 }
 
+interface SelfReviewDraftResponse {
+  area_id: number;
+  title: string;
+  description?: string | null;
+  strengths: string;
+  evidence: string;
+  focus: string;
+  support_needed: string;
+}
+
+function buildSelfReviewDraft(appraisal: Appraisal): SelfReviewDraftResponse[] {
+  return appraisal.responses.map((response) => ({
+    area_id: response.area_id || response.id || 0,
+    title: response.title,
+    description: response.description,
+    strengths: response.employee_strengths || '',
+    evidence: response.employee_evidence || '',
+    focus: response.employee_focus || '',
+    support_needed: response.employee_support_needed || '',
+  }));
+}
+
+function hasSelfReviewProgress(appraisal: Appraisal): boolean {
+  return appraisal.responses.some((response) =>
+    Boolean(
+      response.employee_strengths ||
+      response.employee_evidence ||
+      response.employee_focus ||
+      response.employee_support_needed
+    )
+  );
+}
+
 export default function MyDashboard() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [submittingAppraisalId, setSubmittingAppraisalId] = useState<number | null>(null);
+  const [editingAppraisalId, setEditingAppraisalId] = useState<number | null>(null);
+  const [savingAppraisalId, setSavingAppraisalId] = useState<number | null>(null);
+  const [selfReviewDrafts, setSelfReviewDrafts] = useState<Record<number, SelfReviewDraftResponse[]>>({});
 
   useEffect(() => {
     loadData();
@@ -110,24 +145,64 @@ export default function MyDashboard() {
     }
   }
 
-  async function handleSubmitSelfReview(appraisal: Appraisal) {
-    const responses = appraisal.responses.map((response) => ({
-      area_id: response.area_id || response.id || 0,
-      strengths: prompt(`Strengths shown for ${response.title}:`, response.employee_strengths || '') || '',
-      evidence: prompt(`Examples or evidence for ${response.title}:`, response.employee_evidence || '') || '',
-      focus: prompt(`Focus for next period for ${response.title}:`, response.employee_focus || '') || '',
-      support_needed: prompt(`Support needed for ${response.title}:`, response.employee_support_needed || '') || '',
+  function beginSelfReview(appraisal: Appraisal) {
+    setSelfReviewDrafts((current) => ({
+      ...current,
+      [appraisal.id]: buildSelfReviewDraft(appraisal),
     }));
+    setEditingAppraisalId(appraisal.id);
+  }
+
+  function updateSelfReviewDraft(
+    appraisalId: number,
+    areaId: number,
+    field: 'strengths' | 'evidence' | 'focus' | 'support_needed',
+    value: string
+  ) {
+    setSelfReviewDrafts((current) => ({
+      ...current,
+      [appraisalId]: (current[appraisalId] || []).map((response) =>
+        response.area_id === areaId ? { ...response, [field]: value } : response
+      ),
+    }));
+  }
+
+  async function saveSelfReview(
+    appraisal: Appraisal,
+    options: { submit: boolean; closeAfter: boolean; successMessage: string }
+  ) {
+    const draftResponses = selfReviewDrafts[appraisal.id] || buildSelfReviewDraft(appraisal);
 
     try {
-      setSubmittingAppraisalId(appraisal.id);
-      await api.submitSelfReview(appraisal.id, { responses });
-      alert('Self-reflection submitted.');
-      loadData();
+      setSavingAppraisalId(appraisal.id);
+      const updated = await api.submitSelfReview(appraisal.id, {
+        responses: draftResponses.map((response) => ({
+          area_id: response.area_id,
+          strengths: response.strengths,
+          evidence: response.evidence,
+          focus: response.focus,
+          support_needed: response.support_needed,
+        })),
+        submit: options.submit,
+      });
+
+      setAppraisals((current) =>
+        current.map((item) => (item.id === appraisal.id ? updated : item))
+      );
+      setSelfReviewDrafts((current) => ({
+        ...current,
+        [appraisal.id]: buildSelfReviewDraft(updated),
+      }));
+
+      if (options.closeAfter || options.submit) {
+        setEditingAppraisalId(null);
+      }
+
+      alert(options.successMessage);
     } catch (err: any) {
       alert('Error: ' + err.message);
     } finally {
-      setSubmittingAppraisalId(null);
+      setSavingAppraisalId(null);
     }
   }
 
@@ -248,64 +323,146 @@ export default function MyDashboard() {
                   <span className="status-badge status-neutral">Manager due {appraisal.manager_review_due_date}</span>
                 </div>
                 <div className="stack">
-                  {appraisal.responses.map((response, index) => (
-                    <div key={`${appraisal.id}-${response.area_id || response.id || index}`} className="surface-panel stack" style={{ padding: '12px' }}>
-                      <div>
-                        <strong>{response.title}</strong>
-                        {response.description ? (
-                          <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
-                        ) : null}
-                      </div>
-                      <div className="form-grid form-grid--two">
-                        <div>
-                          <strong>Strengths</strong>
-                          <p>{response.employee_strengths || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Evidence</strong>
-                          <p>{response.employee_evidence || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Focus</strong>
-                          <p>{response.employee_focus || '-'}</p>
-                        </div>
-                        <div>
-                          <strong>Support Needed</strong>
-                          <p>{response.employee_support_needed || '-'}</p>
-                        </div>
-                      </div>
-                      {appraisal.status === 'completed' && (
-                        <div className="form-grid form-grid--two">
+                  {(editingAppraisalId === appraisal.id
+                    ? (selfReviewDrafts[appraisal.id] || buildSelfReviewDraft(appraisal)).map((response) => (
+                        <div key={`${appraisal.id}-${response.area_id}`} className="surface-panel stack" style={{ padding: '12px' }}>
                           <div>
-                            <strong>Manager Observations</strong>
-                            <p>{response.manager_observations || '-'}</p>
+                            <strong>{response.title}</strong>
+                            {response.description ? (
+                              <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
+                            ) : null}
                           </div>
-                          <div>
-                            <strong>Trajectory</strong>
-                            <p>{formatTrajectory(response.manager_trajectory)}</p>
-                          </div>
-                          <div>
-                            <strong>Manager Focus</strong>
-                            <p>{response.manager_focus || '-'}</p>
-                          </div>
-                          <div>
-                            <strong>Support Commitment</strong>
-                            <p>{response.manager_support_commitment || '-'}</p>
+                          <div className="form-grid form-grid--two">
+                            <div className="form-group">
+                              <label>Strengths</label>
+                              <textarea
+                                rows={4}
+                                value={response.strengths}
+                                onChange={(e) => updateSelfReviewDraft(appraisal.id, response.area_id, 'strengths', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Evidence</label>
+                              <textarea
+                                rows={4}
+                                value={response.evidence}
+                                onChange={(e) => updateSelfReviewDraft(appraisal.id, response.area_id, 'evidence', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Focus</label>
+                              <textarea
+                                rows={4}
+                                value={response.focus}
+                                onChange={(e) => updateSelfReviewDraft(appraisal.id, response.area_id, 'focus', e.target.value)}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Support Needed</label>
+                              <textarea
+                                rows={4}
+                                value={response.support_needed}
+                                onChange={(e) => updateSelfReviewDraft(appraisal.id, response.area_id, 'support_needed', e.target.value)}
+                              />
+                            </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      ))
+                    : appraisal.responses.map((response, index) => (
+                        <div key={`${appraisal.id}-${response.area_id || response.id || index}`} className="surface-panel stack" style={{ padding: '12px' }}>
+                          <div>
+                            <strong>{response.title}</strong>
+                            {response.description ? (
+                              <p className="muted-text" style={{ marginBottom: 0 }}>{response.description}</p>
+                            ) : null}
+                          </div>
+                          <div className="form-grid form-grid--two">
+                            <div>
+                              <strong>Strengths</strong>
+                              <p>{response.employee_strengths || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Evidence</strong>
+                              <p>{response.employee_evidence || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Focus</strong>
+                              <p>{response.employee_focus || '-'}</p>
+                            </div>
+                            <div>
+                              <strong>Support Needed</strong>
+                              <p>{response.employee_support_needed || '-'}</p>
+                            </div>
+                          </div>
+                          {(appraisal.status === 'completed' || response.manager_observations || response.manager_focus || response.manager_support_commitment || response.manager_trajectory) && (
+                            <div className="form-grid form-grid--two">
+                              <div>
+                                <strong>Manager Observations</strong>
+                                <p>{response.manager_observations || '-'}</p>
+                              </div>
+                              <div>
+                                <strong>Trajectory</strong>
+                                <p>{formatTrajectory(response.manager_trajectory)}</p>
+                              </div>
+                              <div>
+                                <strong>Manager Focus</strong>
+                                <p>{response.manager_focus || '-'}</p>
+                              </div>
+                              <div>
+                                <strong>Support Commitment</strong>
+                                <p>{response.manager_support_commitment || '-'}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )))}
                 </div>
                 {appraisal.status === 'self_review_pending' && (
                   <div className="inline-actions">
-                    <button
-                      className="btn btn-success"
-                      disabled={submittingAppraisalId === appraisal.id}
-                      onClick={() => handleSubmitSelfReview(appraisal)}
-                    >
-                      {submittingAppraisalId === appraisal.id ? 'Submitting...' : 'Complete Self-Reflection'}
-                    </button>
+                    {editingAppraisalId === appraisal.id ? (
+                      <>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveSelfReview(appraisal, {
+                            submit: false,
+                            closeAfter: false,
+                            successMessage: 'Self-reflection draft saved.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Saving...' : 'Save Draft'}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveSelfReview(appraisal, {
+                            submit: false,
+                            closeAfter: true,
+                            successMessage: 'Progress saved. You can continue later.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Saving...' : 'Cancel'}
+                        </button>
+                        <button
+                          className="btn btn-success"
+                          disabled={savingAppraisalId === appraisal.id}
+                          onClick={() => saveSelfReview(appraisal, {
+                            submit: true,
+                            closeAfter: true,
+                            successMessage: 'Self-reflection sent to your manager.',
+                          })}
+                        >
+                          {savingAppraisalId === appraisal.id ? 'Submitting...' : 'Send to Manager'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn btn-success"
+                        onClick={() => beginSelfReview(appraisal)}
+                      >
+                        {hasSelfReviewProgress(appraisal) ? 'Edit Self-Reflection' : 'Start Self-Reflection'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -161,6 +161,7 @@ export const api = {
       focus?: string;
       support_needed?: string;
     }>;
+    submit?: boolean;
   }) =>
     fetchAPI(`/api/appraisals/${id}/self-review`, {
       method: 'PUT',
@@ -176,12 +177,19 @@ export const api = {
       evidence?: string;
       focus?: string;
       support_commitment?: string;
-      trajectory: 'growing' | 'steady' | 'ready_for_more' | 'needs_support';
+      trajectory?: 'growing' | 'steady' | 'ready_for_more' | 'needs_support';
     }>;
+    submit?: boolean;
   }) =>
     fetchAPI(`/api/appraisals/${id}/manager-review`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+
+  resetAppraisalSelfReview: (id: number) =>
+    fetchAPI(`/api/admin/appraisals/${id}/reset-self-review`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
     }),
 
   getAppraisalAdminData: () => fetchOptional('/api/admin/appraisals/settings', {
