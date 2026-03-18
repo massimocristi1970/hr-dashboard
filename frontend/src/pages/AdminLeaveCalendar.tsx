@@ -26,6 +26,10 @@ interface Employee {
   email: string;
 }
 
+interface UserInfo {
+  isAdmin: boolean;
+}
+
 // Generate a consistent color for each employee based on their id
 function getEmployeeColor(employeeId: number): string {
   const colors = [
@@ -46,6 +50,7 @@ function getEmployeeColor(employeeId: number): string {
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -58,9 +63,10 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, employeesData] = await Promise.all([
+      const [requestsData, employeesData, meData] = await Promise.all([
         api.getAllRequests(),
         api.getAllEmployees(),
+        api.getMe(),
       ]);
 
       // Filter to only approved leave
@@ -70,6 +76,7 @@ export default function AdminLeaveCalendar() {
 
       setLeaveRequests(approvedRequests);
       setEmployees(employeesData);
+      setUserInfo(meData);
     } catch (err: any) {
       setError(err.message);
     } finally {
