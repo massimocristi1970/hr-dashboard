@@ -14,6 +14,7 @@ interface AgentFile {
 export default function MyFiles() {
   const [files, setFiles] = useState<AgentFile[]>([]);
   const [onedriveFolderUrl, setOnedriveFolderUrl] = useState<string>('');
+  const [onedriveSharedWithEmployee, setOnedriveSharedWithEmployee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -35,6 +36,7 @@ export default function MyFiles() {
       const data = await api.getMyFiles();
       setFiles(data.files);
       setOnedriveFolderUrl(data.onedrive_folder_url || '');
+      setOnedriveSharedWithEmployee(Boolean(data.onedrive_shared_with_employee));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -108,6 +110,14 @@ export default function MyFiles() {
         <section className="alert alert-info">
           <h3>Your OneDrive Folder</h3>
           <p>Upload files to your personal OneDrive folder, then register them here for tracking.</p>
+          <div className="inline-actions" style={{ marginTop: '0.5rem' }}>
+            <span className={`status-badge ${onedriveSharedWithEmployee ? 'status-approved' : 'status-neutral'}`}>
+              {onedriveSharedWithEmployee ? 'Access confirmed by HR' : 'Access not yet confirmed by HR'}
+            </span>
+          </div>
+          <p className="muted-text" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+            Sign in with your company Microsoft account when prompted. If the folder does not open, please contact HR.
+          </p>
           <a 
             href={onedriveFolderUrl} 
             target="_blank" 

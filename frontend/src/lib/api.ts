@@ -32,6 +32,17 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
   return response.json();
 }
 
+async function fetchOptional<T>(path: string, fallback: T, options: RequestInit = {}) {
+  try {
+    return await fetchAPI(path, options);
+  } catch (error: any) {
+    if (error?.message?.includes('404') || error?.message === 'Not found') {
+      return fallback;
+    }
+    throw error;
+  }
+}
+
 export const api = {
   getMe: () => fetchAPI('/api/me'),
   
@@ -51,6 +62,8 @@ export const api = {
     }),
   
   getPendingRequests: () => fetchAPI('/api/leave/pending'),
+
+  getLeaveCalendar: () => fetchAPI('/api/leave/calendar'),
   
   approveRequest: (id: number, notes: string, adminOverride?: boolean) =>
     fetchAPI(`/api/leave/${id}/approve`, {
@@ -100,6 +113,11 @@ export const api = {
     full_name: string;
     manager_email?: string;
     onedrive_folder_url?: string;
+    onedrive_shared_with_employee?: boolean;
+    onedrive_extra_access_links?: Array<{
+      label: string;
+      url: string;
+    }>;
   }) =>
     fetchAPI('/api/admin/employees', {
       method: 'POST',
@@ -131,5 +149,84 @@ export const api = {
   deleteBlockedDay: (id: number) =>
     fetchAPI(`/api/admin/blocked-days/${id}`, {
       method: 'DELETE',
+    }),
+
+  getMyAppraisals: () => fetchOptional('/api/appraisals/my', []),
+
+  submitSelfReview: (id: number, data: {
+    responses: Array<{
+      area_id: number;
+      strengths?: string;
+      evidence?: string;
+      focus?: string;
+      support_needed?: string;
+    }>;
+  }) =>
+    fetchAPI(`/api/appraisals/${id}/self-review`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getManagerAppraisals: () => fetchOptional('/api/appraisals/manager', []),
+
+  submitManagerReview: (id: number, data: {
+    responses: Array<{
+      area_id: number;
+      observations?: string;
+      evidence?: string;
+      focus?: string;
+      support_commitment?: string;
+      trajectory: 'growing' | 'steady' | 'ready_for_more' | 'needs_support';
+    }>;
+  }) =>
+    fetchAPI(`/api/appraisals/${id}/manager-review`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getAppraisalAdminData: () => fetchOptional('/api/admin/appraisals/settings', {
+    settings: {
+      cadence: 'quarterly',
+      self_review_deadline_days: 7,
+      manager_review_deadline_days: 7,
+    },
+    areas: [],
+    appraisals: [],
+  }),
+
+  saveAppraisalSettings: (data: {
+    cadence: 'monthly' | 'quarterly' | 'biannual' | 'annual';
+    self_review_deadline_days: number;
+    manager_review_deadline_days: number;
+  }) =>
+    fetchAPI('/api/admin/appraisals/settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  addAppraisalArea: (data: {
+    title: string;
+    description?: string;
+    sort_order?: number;
+    is_active?: boolean;
+  }) =>
+    fetchAPI('/api/admin/appraisals/areas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  archiveAppraisalArea: (id: number) =>
+    fetchAPI(`/api/admin/appraisals/areas/${id}`, {
+      method: 'DELETE',
+    }),
+
+  launchAppraisalCycle: (data: {
+    cycle_label: string;
+    cycle_start_date: string;
+    cycle_end_date: string;
+  }) =>
+    fetchAPI('/api/admin/appraisals/launch', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };

@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
+import {
+  formatLocalDate,
+  getCalendarDaysForMonth,
+  getDatesInRange,
+  parseLocalDateString,
+} from "../lib/leaveCalendarDates";
 
 interface LeaveRequest {
   id: number;
@@ -7,7 +13,7 @@ interface LeaveRequest {
   start_date: string;
   end_date: string;
   days_requested: number;
-  leave_type: 'annual' | 'unpaid' | 'sick';
+  leave_type: "annual" | "unpaid" | "sick";
   reason: string;
   status: string;
   full_name: string;
@@ -20,47 +26,30 @@ interface Employee {
   email: string;
 }
 
-interface UserInfo {
-  isAdmin: boolean;
-}
-
 // Generate a consistent color for each employee based on their id
 function getEmployeeColor(employeeId: number): string {
   const colors = [
-    '#6366f1', // indigo
-    '#8b5cf6', // violet
-    '#ec4899', // pink
-    '#ef4444', // red
-    '#f97316', // orange
-    '#eab308', // yellow
-    '#22c55e', // green
-    '#14b8a6', // teal
-    '#06b6d4', // cyan
-    '#3b82f6', // blue
+    "#6366f1", // indigo
+    "#8b5cf6", // violet
+    "#ec4899", // pink
+    "#ef4444", // red
+    "#f97316", // orange
+    "#eab308", // yellow
+    "#22c55e", // green
+    "#14b8a6", // teal
+    "#06b6d4", // cyan
+    "#3b82f6", // blue
   ];
   return colors[employeeId % colors.length];
-}
-
-// Get all dates in a range (inclusive)
-function getDatesInRange(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().split('T')[0]);
-  }
-  return dates;
 }
 
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
 
   useEffect(() => {
     loadData();
@@ -69,20 +58,18 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, employeesData, meData] = await Promise.all([
+      const [requestsData, employeesData] = await Promise.all([
         api.getAllRequests(),
         api.getAllEmployees(),
-        api.getMe()
       ]);
-      
+
       // Filter to only approved leave
       const approvedRequests = requestsData.filter(
-        (req: LeaveRequest) => req.status === 'approved'
+        (req: LeaveRequest) => req.status === "approved",
       );
-      
+
       setLeaveRequests(approvedRequests);
       setEmployees(employeesData);
-      setUserInfo(meData);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -93,67 +80,40 @@ export default function AdminLeaveCalendar() {
   // Build a map of date -> employees on leave
   function buildLeaveMap(): Map<string, LeaveRequest[]> {
     const leaveMap = new Map<string, LeaveRequest[]>();
-    
-    const filteredRequests = selectedEmployee === 'all' 
-      ? leaveRequests 
-      : leaveRequests.filter(req => req.email === selectedEmployee);
-    
-    filteredRequests.forEach(request => {
+
+    const filteredRequests =
+      selectedEmployee === "all"
+        ? leaveRequests
+        : leaveRequests.filter((req) => req.email === selectedEmployee);
+
+    filteredRequests.forEach((request) => {
       const dates = getDatesInRange(request.start_date, request.end_date);
-      dates.forEach(date => {
+      dates.forEach((date) => {
         if (!leaveMap.has(date)) {
           leaveMap.set(date, []);
         }
         leaveMap.get(date)!.push(request);
       });
     });
-    
+
     return leaveMap;
   }
 
   // Get calendar data for the current month
   function getCalendarDays(): (Date | null)[][] {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    
-    const weeks: (Date | null)[][] = [];
-    let currentWeek: (Date | null)[] = [];
-    
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < firstDay.getDay(); i++) {
-      currentWeek.push(null);
-    }
-    
-    // Add all days of the month
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-      currentWeek.push(new Date(year, month, day));
-      
-      if (currentWeek.length === 7) {
-        weeks.push(currentWeek);
-        currentWeek = [];
-      }
-    }
-    
-    // Fill remaining cells in the last week
-    while (currentWeek.length > 0 && currentWeek.length < 7) {
-      currentWeek.push(null);
-    }
-    if (currentWeek.length > 0) {
-      weeks.push(currentWeek);
-    }
-    
-    return weeks;
+    return getCalendarDaysForMonth(currentDate);
   }
 
   function previousMonth() {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1),
+    );
   }
 
   function nextMonth() {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    setCurrentDate(
+      new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1),
+    );
   }
 
   function goToToday() {
@@ -161,36 +121,46 @@ export default function AdminLeaveCalendar() {
   }
 
   const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  if (loading) return <div className="loading-state">Loading leave calendar...</div>;
+  if (loading)
+    return <div className="loading-state">Loading leave calendar...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
   const leaveMap = buildLeaveMap();
   const calendarWeeks = getCalendarDays();
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate(new Date());
 
   // Get unique employees who have approved leave
   const employeesWithLeave = Array.from(
-    new Set(leaveRequests.map(req => req.email))
-  ).map(email => {
-    const emp = employees.find(e => e.email === email);
-    const req = leaveRequests.find(r => r.email === email);
+    new Set(leaveRequests.map((req) => req.email)),
+  ).map((email) => {
+    const req = leaveRequests.find((r) => r.email === email);
     return {
       email,
-      full_name: emp?.full_name || req?.full_name || email,
-      employee_id: req?.employee_id || 0
+      full_name: req?.full_name || email,
+      employee_id: req?.employee_id || 0,
     };
   });
 
-  function formatLeaveType(type: LeaveRequest['leave_type']) {
-    if (type === 'annual') return 'Annual Leave';
-    if (type === 'unpaid') return 'Unpaid Leave';
-    return 'Sick Leave';
+  function formatLeaveType(type: LeaveRequest["leave_type"]) {
+    if (type === "annual") return "Annual Leave";
+    if (type === "unpaid") return "Unpaid Leave";
+    return "Sick Leave";
   }
 
   return (
@@ -220,81 +190,100 @@ export default function AdminLeaveCalendar() {
 
       <section className="card">
         <div className="calendar-toolbar">
-          <div className="form-group" style={{ minWidth: '240px', marginBottom: 0 }}>
+          <div
+            className="form-group"
+            style={{ minWidth: "240px", marginBottom: 0 }}
+          >
             <label>Filter by Employee</label>
             <select
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
             >
               <option value="all">All Employees</option>
-              {employeesWithLeave.map(emp => (
+              {employeesWithLeave.map((emp) => (
                 <option key={emp.email} value={emp.email}>
                   {emp.full_name}
                 </option>
               ))}
             </select>
           </div>
-          
-          <div className="inline-actions" style={{ marginLeft: 'auto' }}>
-            <button className="btn btn-secondary" onClick={previousMonth}>&lt; Prev</button>
-            <button className="btn" onClick={goToToday}>Today</button>
-            <button className="btn btn-secondary" onClick={nextMonth}>Next &gt;</button>
+
+          <div className="inline-actions" style={{ marginLeft: "auto" }}>
+            <button className="btn btn-secondary" onClick={previousMonth}>
+              &lt; Prev
+            </button>
+            <button className="btn" onClick={goToToday}>
+              Today
+            </button>
+            <button className="btn btn-secondary" onClick={nextMonth}>
+              Next &gt;
+            </button>
           </div>
         </div>
       </section>
 
       <section className="card">
-        <h2 style={{ textAlign: 'center', marginBottom: '1rem' }}>
+        <h2 style={{ textAlign: "center", marginBottom: "1rem" }}>
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </h2>
         <div className="calendar-grid">
-          {dayNames.map(day => (
+          {dayNames.map((day) => (
             <div key={day} className="calendar-header-cell">
               {day}
             </div>
           ))}
-          {calendarWeeks.map((week, weekIndex) => (
+          {calendarWeeks.map((week, weekIndex) =>
             week.map((day, dayIndex) => {
               if (!day) {
-                return <div key={`empty-${weekIndex}-${dayIndex}`} className="calendar-cell empty" />;
+                return (
+                  <div
+                    key={`empty-${weekIndex}-${dayIndex}`}
+                    className="calendar-cell empty"
+                  />
+                );
               }
-              
-              const dateStr = day.toISOString().split('T')[0];
+
+              const dateStr = formatLocalDate(day);
               const leaveOnDay = leaveMap.get(dateStr) || [];
               const isToday = dateStr === today;
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              
+
               return (
-                <div 
-                  key={dateStr} 
-                  className={`calendar-cell ${isToday ? 'today' : ''} ${isWeekend ? 'weekend' : ''} ${leaveOnDay.length > 0 ? 'has-leave' : ''}`}
+                <div
+                  key={dateStr}
+                  className={`calendar-cell ${isToday ? "today" : ""} ${isWeekend ? "weekend" : ""} ${leaveOnDay.length > 0 ? "has-leave" : ""}`}
                 >
                   <div className="calendar-date">{day.getDate()}</div>
                   <div className="calendar-events">
                     {leaveOnDay.map((leave) => (
-                      <div 
+                      <div
                         key={`${leave.id}-${dateStr}`}
                         className="calendar-event"
-                        style={{ backgroundColor: getEmployeeColor(leave.employee_id) }}
+                        style={{
+                          backgroundColor: getEmployeeColor(leave.employee_id),
+                        }}
                         title={`${leave.full_name}: ${leave.start_date} to ${leave.end_date}`}
                       >
-                        {leave.full_name.split(' ')[0]}
+                        {leave.full_name.split(" ")[0]}
                       </div>
                     ))}
                   </div>
                 </div>
               );
-            })
-          ))}
+            }),
+          )}
         </div>
       </section>
 
       <section className="card">
         <h3>Legend</h3>
-        <div className="legend-grid" style={{ marginTop: '0.5rem' }}>
-          {employeesWithLeave.map(emp => (
+        <div className="legend-grid" style={{ marginTop: "0.5rem" }}>
+          {employeesWithLeave.map((emp) => (
             <div key={emp.email} className="legend-item">
-              <div className="legend-swatch" style={{ backgroundColor: getEmployeeColor(emp.employee_id) }} />
+              <div
+                className="legend-swatch"
+                style={{ backgroundColor: getEmployeeColor(emp.employee_id) }}
+              />
               <span>{emp.full_name}</span>
             </div>
           ))}
@@ -303,26 +292,44 @@ export default function AdminLeaveCalendar() {
 
       <section className="card">
         <h3>Summary</h3>
-        <div className="summary-grid" style={{ marginTop: '0.5rem' }}>
+        <div className="summary-grid" style={{ marginTop: "0.5rem" }}>
           <div className="summary-card">
             <span className="summary-label">Total Approved Leave</span>
-            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
+            <p
+              className="summary-value summary-value--primary"
+              style={{ margin: "0.5rem 0 0" }}
+            >
               {leaveRequests.length} requests
             </p>
           </div>
           <div className="summary-card">
             <span className="summary-label">Employees with Leave</span>
-            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
+            <p
+              className="summary-value summary-value--primary"
+              style={{ margin: "0.5rem 0 0" }}
+            >
               {employeesWithLeave.length} employees
             </p>
           </div>
           <div className="summary-card">
             <span className="summary-label">Total Days This Month</span>
-            <p className="summary-value summary-value--primary" style={{ margin: '0.5rem 0 0' }}>
-              {Array.from(leaveMap.keys()).filter(date => {
-                const d = new Date(date);
-                return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
-              }).reduce((sum, date) => sum + (leaveMap.get(date)?.length || 0), 0)} person-days
+            <p
+              className="summary-value summary-value--primary"
+              style={{ margin: "0.5rem 0 0" }}
+            >
+              {Array.from(leaveMap.keys())
+                .filter((date) => {
+                  const d = parseLocalDateString(date);
+                  return (
+                    d.getMonth() === currentDate.getMonth() &&
+                    d.getFullYear() === currentDate.getFullYear()
+                  );
+                })
+                .reduce(
+                  (sum, date) => sum + (leaveMap.get(date)?.length || 0),
+                  0,
+                )}{" "}
+              person-days
             </p>
           </div>
         </div>
@@ -348,21 +355,38 @@ export default function AdminLeaveCalendar() {
                 </thead>
                 <tbody>
                   {leaveRequests
-                    .filter(req => selectedEmployee === 'all' || req.email === selectedEmployee)
+                    .filter(
+                      (req) =>
+                        selectedEmployee === "all" ||
+                        req.email === selectedEmployee,
+                    )
                     .sort((a, b) => a.start_date.localeCompare(b.start_date))
-                    .map(req => (
+                    .map((req) => (
                       <tr key={req.id}>
                         <td>
                           <div className="legend-item">
-                            <div className="legend-swatch" style={{ width: '12px', height: '12px', backgroundColor: getEmployeeColor(req.employee_id) }} />
+                            <div
+                              className="legend-swatch"
+                              style={{
+                                width: "12px",
+                                height: "12px",
+                                backgroundColor: getEmployeeColor(
+                                  req.employee_id,
+                                ),
+                              }}
+                            />
                             {req.full_name}
                           </div>
                         </td>
                         <td>{req.start_date}</td>
                         <td>{req.end_date}</td>
                         <td>{req.days_requested}</td>
-                        <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
-                        <td>{req.reason || '-'}</td>
+                        <td>
+                          <span className="status-badge status-neutral">
+                            {formatLeaveType(req.leave_type)}
+                          </span>
+                        </td>
+                        <td>{req.reason || "-"}</td>
                       </tr>
                     ))}
                 </tbody>
