@@ -20,6 +20,10 @@ interface Employee {
   email: string;
 }
 
+interface UserInfo {
+  isAdmin: boolean;
+}
+
 // Generate a consistent color for each employee based on their id
 function getEmployeeColor(employeeId: number): string {
   const colors = [
@@ -52,6 +56,7 @@ function getDatesInRange(startDate: string, endDate: string): string[] {
 export default function AdminLeaveCalendar() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -64,9 +69,10 @@ export default function AdminLeaveCalendar() {
   async function loadData() {
     try {
       setLoading(true);
-      const [requestsData, employeesData] = await Promise.all([
+      const [requestsData, employeesData, meData] = await Promise.all([
         api.getAllRequests(),
-        api.getAllEmployees()
+        api.getAllEmployees(),
+        api.getMe()
       ]);
       
       // Filter to only approved leave
@@ -76,6 +82,7 @@ export default function AdminLeaveCalendar() {
       
       setLeaveRequests(approvedRequests);
       setEmployees(employeesData);
+      setUserInfo(meData);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -321,47 +328,49 @@ export default function AdminLeaveCalendar() {
         </div>
       </section>
 
-      <section className="card table-card">
-        <h3>Approved Leave Details</h3>
-        {leaveRequests.length === 0 ? (
-          <div className="empty-state">No approved leave requests.</div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                  <th>Days</th>
-                  <th>Type</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaveRequests
-                  .filter(req => selectedEmployee === 'all' || req.email === selectedEmployee)
-                  .sort((a, b) => a.start_date.localeCompare(b.start_date))
-                  .map(req => (
-                    <tr key={req.id}>
-                      <td>
-                        <div className="legend-item">
-                          <div className="legend-swatch" style={{ width: '12px', height: '12px', backgroundColor: getEmployeeColor(req.employee_id) }} />
-                          {req.full_name}
-                        </div>
-                      </td>
-                      <td>{req.start_date}</td>
-                      <td>{req.end_date}</td>
-                      <td>{req.days_requested}</td>
-                      <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
-                      <td>{req.reason || '-'}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {userInfo?.isAdmin && (
+        <section className="card table-card">
+          <h3>Approved Leave Details</h3>
+          {leaveRequests.length === 0 ? (
+            <div className="empty-state">No approved leave requests.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
+                    <th>Days</th>
+                    <th>Type</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveRequests
+                    .filter(req => selectedEmployee === 'all' || req.email === selectedEmployee)
+                    .sort((a, b) => a.start_date.localeCompare(b.start_date))
+                    .map(req => (
+                      <tr key={req.id}>
+                        <td>
+                          <div className="legend-item">
+                            <div className="legend-swatch" style={{ width: '12px', height: '12px', backgroundColor: getEmployeeColor(req.employee_id) }} />
+                            {req.full_name}
+                          </div>
+                        </td>
+                        <td>{req.start_date}</td>
+                        <td>{req.end_date}</td>
+                        <td>{req.days_requested}</td>
+                        <td><span className="status-badge status-neutral">{formatLeaveType(req.leave_type)}</span></td>
+                        <td>{req.reason || '-'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
