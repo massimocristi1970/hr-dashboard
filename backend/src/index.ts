@@ -211,6 +211,19 @@ function addDays(date: string, days: number): string {
   return result.toISOString().split('T')[0];
 }
 
+function calculateAppraisalDueDates(
+  cycleEndDate: string,
+  settings: { self_review_deadline_days: number; manager_review_deadline_days: number }
+) {
+  const selfReviewDeadlineDays = Number(settings.self_review_deadline_days);
+  const managerReviewDeadlineDays = Number(settings.manager_review_deadline_days);
+
+  return {
+    self_review_due_date: addDays(cycleEndDate, selfReviewDeadlineDays),
+    manager_review_due_date: addDays(cycleEndDate, managerReviewDeadlineDays),
+  };
+}
+
 function normalizeText(value?: string): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -262,6 +275,12 @@ async function getAppraisalDetail(env: Env, appraisalId: number) {
     return null;
   }
 
+  const settings = await getAppraisalSettings(env) as {
+    self_review_deadline_days: number;
+    manager_review_deadline_days: number;
+  };
+  const dueDates = calculateAppraisalDueDates(appraisal.cycle_end_date as string, settings);
+
   const responses = await env.hr_dashboard_db.prepare(`
     SELECT
       ar.id,
@@ -287,6 +306,7 @@ async function getAppraisalDetail(env: Env, appraisalId: number) {
 
   return {
     ...appraisal,
+    ...dueDates,
     responses: responses.results,
   };
 }
@@ -1121,7 +1141,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           ...area,
           is_active: Boolean(area.is_active),
         })),
-        appraisals: appraisals.results,
+        appraisals: (appraisals.results as any[]).map((appraisal) => ({
+          ...appraisal,
+          ...calculateAppraisalDueDates(appraisal.cycle_end_date, settings as {
+            self_review_deadline_days: number;
+            manager_review_deadline_days: number;
+          }),
+        })),
       }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
@@ -1255,6 +1281,11 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       `).all();
 
       for (const employee of employees.results as any[]) {
+        const dueDates = calculateAppraisalDueDates(validated.cycle_end_date, settings as {
+          self_review_deadline_days: number;
+          manager_review_deadline_days: number;
+        });
+
         await env.hr_dashboard_db.prepare(`
           INSERT OR IGNORE INTO appraisals (
             employee_id,
@@ -1276,8 +1307,8 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           settings.cadence,
           validated.cycle_start_date,
           validated.cycle_end_date,
-          addDays(validated.cycle_end_date, settings.self_review_deadline_days),
-          addDays(validated.cycle_end_date, settings.self_review_deadline_days + settings.manager_review_deadline_days),
+          dueDates.self_review_due_date,
+          dueDates.manager_review_due_date,
           userEmail
         ).run();
       }
