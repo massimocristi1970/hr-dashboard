@@ -137,6 +137,43 @@ export const api = {
   
   getAllRequests: () => fetchAPI('/api/admin/all-requests'),
 
+  createAdminLeave: (data: {
+    employee_id: number;
+    start_date: string;
+    end_date: string;
+    reason?: string;
+    leave_type: 'annual' | 'unpaid' | 'sick';
+    start_half_day?: 'full' | 'am' | 'pm';
+    end_half_day?: 'full' | 'am' | 'pm';
+    status: 'pending' | 'approved' | 'declined' | 'cancelled';
+    manager_notes?: string;
+  }) =>
+    fetchAPI('/api/admin/leave', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateAdminLeave: (id: number, data: {
+    employee_id: number;
+    start_date: string;
+    end_date: string;
+    reason?: string;
+    leave_type: 'annual' | 'unpaid' | 'sick';
+    start_half_day?: 'full' | 'am' | 'pm';
+    end_half_day?: 'full' | 'am' | 'pm';
+    status: 'pending' | 'approved' | 'declined' | 'cancelled';
+    manager_notes?: string;
+  }) =>
+    fetchAPI(`/api/admin/leave/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteAdminLeave: (id: number) =>
+    fetchAPI(`/api/admin/leave/${id}`, {
+      method: 'DELETE',
+    }),
+
   // Admin blocked days endpoints
   getBlockedDays: () => fetchAPI('/api/admin/blocked-days'),
   

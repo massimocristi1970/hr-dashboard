@@ -29,6 +29,24 @@ interface Employee {
   leave_summary: LeaveSummary;
 }
 
+interface AdminLeaveRequest {
+  id: number;
+  employee_id: number;
+  full_name: string;
+  email: string;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  leave_type: 'annual' | 'unpaid' | 'sick';
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  reason: string;
+  manager_notes?: string | null;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  created_at: string;
+  updated_at: string;
+}
+
 interface BlockedDay {
   id: number;
   blocked_date: string;
@@ -95,6 +113,76 @@ function createEmptyEmployeeForm(): EmployeeFormData {
   };
 }
 
+interface LeaveFormData {
+  employee_id: string;
+  start_date: string;
+  end_date: string;
+  leave_type: 'annual' | 'unpaid' | 'sick';
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  reason: string;
+  manager_notes: string;
+  start_half_day: 'full' | 'am' | 'pm';
+  end_half_day: 'full' | 'am' | 'pm';
+}
+
+function createEmptyLeaveForm(): LeaveFormData {
+  return {
+    employee_id: '',
+    start_date: '',
+    end_date: '',
+    leave_type: 'annual',
+    status: 'approved',
+    reason: '',
+    manager_notes: '',
+    start_half_day: 'full',
+    end_half_day: 'full',
+  };
+}
+
+function mapLeaveToForm(request: AdminLeaveRequest): LeaveFormData {
+  return {
+    employee_id: request.employee_id.toString(),
+    start_date: request.start_date,
+    end_date: request.end_date,
+    leave_type: request.leave_type,
+    status: request.status,
+    reason: request.reason || '',
+    manager_notes: request.manager_notes || '',
+    start_half_day: request.start_half_day || 'full',
+    end_half_day: request.end_half_day || 'full',
+  };
+}
+
+function calculateLeaveDays(
+  startDate: string,
+  endDate: string,
+  startHalfDay: 'full' | 'am' | 'pm',
+  endHalfDay: 'full' | 'am' | 'pm'
+): number {
+  if (!startDate || !endDate) return 0;
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end.getTime() - start.getTime());
+  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+  if (startDate === endDate) {
+    return startHalfDay === 'full' ? 1 : 0.5;
+  }
+
+  let adjustment = 0;
+  if (startHalfDay === 'am' || startHalfDay === 'pm') adjustment -= 0.5;
+  if (endHalfDay === 'am' || endHalfDay === 'pm') adjustment -= 0.5;
+
+  return Math.max(0.5, wholeDays + adjustment);
+}
+
+function formatLeaveType(type: AdminLeaveRequest['leave_type']) {
+  if (type === 'annual') return 'Annual Leave';
+  if (type === 'unpaid') return 'Unpaid Leave';
+  return 'Sick Leave';
+}
+
 function mapEmployeeToForm(employee: Employee): EmployeeFormData {
   return {
     email: employee.email,
@@ -108,17 +196,26 @@ function mapEmployeeToForm(employee: Employee): EmployeeFormData {
 
 export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<AdminLeaveRequest[]>([]);
   const [blockedDays, setBlockedDays] = useState<BlockedDay[]>([]);
   const [appraisalAdmin, setAppraisalAdmin] = useState<AppraisalAdminPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
   const [showAppraisalAreaForm, setShowAppraisalAreaForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'employees' | 'blocked-days' | 'appraisals'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'appraisals'>('employees');
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
+  const [editingLeaveId, setEditingLeaveId] = useState<number | null>(null);
+  const [leaveFilters, setLeaveFilters] = useState({
+    employee_id: 'all',
+    leave_type: 'all',
+    status: 'all',
+  });
 
   const [formData, setFormData] = useState<EmployeeFormData>(createEmptyEmployeeForm());
+  const [leaveFormData, setLeaveFormData] = useState<LeaveFormData>(createEmptyLeaveForm());
 
   const [blockedDayFormData, setBlockedDayFormData] = useState({
     blocked_date: '',
@@ -150,12 +247,14 @@ export default function HrAdmin() {
   async function loadData() {
     try {
       setLoading(true);
-      const [employeesData, blockedDaysData, appraisalData] = await Promise.all([
+      const [employeesData, requestsData, blockedDaysData, appraisalData] = await Promise.all([
         api.getAllEmployees(),
+        api.getAllRequests(),
         api.getBlockedDays(),
         api.getAppraisalAdminData(),
       ]);
       setEmployees(employeesData);
+      setLeaveRequests(requestsData);
       setBlockedDays(blockedDaysData);
       setAppraisalAdmin(appraisalData);
       setAppraisalSettingsForm(appraisalData.settings);
@@ -172,6 +271,12 @@ export default function HrAdmin() {
     setShowAddForm(false);
   }
 
+  function resetLeaveForm() {
+    setLeaveFormData(createEmptyLeaveForm());
+    setEditingLeaveId(null);
+    setShowLeaveForm(false);
+  }
+
   async function handleSaveEmployee(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -185,6 +290,66 @@ export default function HrAdmin() {
       });
       alert(editingEmployeeId ? 'Employee updated.' : 'Employee added.');
       resetEmployeeForm();
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleSaveLeave(e: React.FormEvent) {
+    e.preventDefault();
+
+    const employeeId = Number(leaveFormData.employee_id);
+    if (!employeeId || !leaveFormData.start_date || !leaveFormData.end_date) {
+      alert('Please choose an employee and valid dates.');
+      return;
+    }
+
+    const payload = {
+      employee_id: employeeId,
+      start_date: leaveFormData.start_date,
+      end_date: leaveFormData.end_date,
+      leave_type: leaveFormData.leave_type,
+      status: leaveFormData.status,
+      reason: leaveFormData.reason || undefined,
+      manager_notes: leaveFormData.manager_notes || undefined,
+      start_half_day: leaveFormData.start_half_day,
+      end_half_day: leaveFormData.end_half_day,
+    };
+
+    try {
+      if (editingLeaveId) {
+        await api.updateAdminLeave(editingLeaveId, payload);
+        alert('Leave updated.');
+      } else {
+        await api.createAdminLeave(payload);
+        alert('Leave added.');
+      }
+      resetLeaveForm();
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  function handleEditLeave(request: AdminLeaveRequest) {
+    setLeaveFormData(mapLeaveToForm(request));
+    setEditingLeaveId(request.id);
+    setShowLeaveForm(true);
+    setActiveTab('leave');
+  }
+
+  async function handleDeleteLeave(request: AdminLeaveRequest) {
+    if (!confirm(`Soft delete ${request.full_name}'s ${formatLeaveType(request.leave_type)} entry from ${request.start_date} to ${request.end_date}?`)) {
+      return;
+    }
+
+    try {
+      await api.deleteAdminLeave(request.id);
+      alert('Leave deleted.');
+      if (editingLeaveId === request.id) {
+        resetLeaveForm();
+      }
       loadData();
     } catch (err: any) {
       alert('Error: ' + err.message);
@@ -394,6 +559,24 @@ export default function HrAdmin() {
 
   const configuredFolders = employees.filter((employee) => employee.onedrive_folder_url).length;
   const sharedFolders = employees.filter((employee) => employee.onedrive_shared_with_employee).length;
+  const leaveDaysPreview = calculateLeaveDays(
+    leaveFormData.start_date,
+    leaveFormData.end_date,
+    leaveFormData.start_half_day,
+    leaveFormData.end_half_day
+  );
+  const filteredLeaveRequests = leaveRequests.filter((request) => {
+    if (leaveFilters.employee_id !== 'all' && request.employee_id.toString() !== leaveFilters.employee_id) {
+      return false;
+    }
+    if (leaveFilters.leave_type !== 'all' && request.leave_type !== leaveFilters.leave_type) {
+      return false;
+    }
+    if (leaveFilters.status !== 'all' && request.status !== leaveFilters.status) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="page-frame">
@@ -430,6 +613,12 @@ export default function HrAdmin() {
           onClick={() => setActiveTab('employees')}
         >
           Employees
+        </button>
+        <button
+          className={activeTab === 'leave' ? 'btn' : 'btn btn-secondary'}
+          onClick={() => setActiveTab('leave')}
+        >
+          Leave
         </button>
         <button
           className={activeTab === 'blocked-days' ? 'btn' : 'btn btn-secondary'}
@@ -734,6 +923,271 @@ export default function HrAdmin() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'leave' && (
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Leave Management</h2>
+              <p>Add, amend, and soft delete annual, unpaid, and sick leave for any employee.</p>
+            </div>
+            <button
+              className="btn"
+              onClick={() => {
+                if (showLeaveForm && !editingLeaveId) {
+                  resetLeaveForm();
+                  return;
+                }
+                setLeaveFormData(createEmptyLeaveForm());
+                setEditingLeaveId(null);
+                setShowLeaveForm(true);
+              }}
+            >
+              {showLeaveForm && !editingLeaveId ? 'Cancel' : 'Add Leave'}
+            </button>
+          </div>
+
+          {showLeaveForm && (
+            <form onSubmit={handleSaveLeave} className="surface-panel stack" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
+              <div className="section-header">
+                <div>
+                  <h3 style={{ marginBottom: '0.35rem' }}>{editingLeaveId ? 'Edit Leave' : 'Add Leave'}</h3>
+                  <p style={{ margin: 0 }}>Create a leave record directly for HR-managed corrections, backfills, and manual updates.</p>
+                </div>
+              </div>
+
+              <div className="form-grid form-grid--two">
+                <div className="form-group">
+                  <label>Employee</label>
+                  <select
+                    required
+                    value={leaveFormData.employee_id}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, employee_id: e.target.value })}
+                  >
+                    <option value="">Select employee</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Leave Type</label>
+                  <select
+                    value={leaveFormData.leave_type}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, leave_type: e.target.value as LeaveFormData['leave_type'] })}
+                  >
+                    <option value="annual">Annual Leave</option>
+                    <option value="unpaid">Unpaid Leave</option>
+                    <option value="sick">Sick Leave</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveFormData.start_date}
+                    onChange={(e) => setLeaveFormData({
+                      ...leaveFormData,
+                      start_date: e.target.value,
+                      end_date: leaveFormData.end_date || e.target.value,
+                    })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Start Day Type</label>
+                  <select
+                    value={leaveFormData.start_half_day}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, start_half_day: e.target.value as LeaveFormData['start_half_day'] })}
+                  >
+                    <option value="full">Full Day</option>
+                    <option value="am">AM Only</option>
+                    <option value="pm">PM Only</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    required
+                    min={leaveFormData.start_date || undefined}
+                    value={leaveFormData.end_date}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, end_date: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Day Type</label>
+                  <select
+                    value={leaveFormData.end_half_day}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, end_half_day: e.target.value as LeaveFormData['end_half_day'] })}
+                  >
+                    <option value="full">Full Day</option>
+                    <option value="am">AM Only</option>
+                    <option value="pm">PM Only</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select
+                    value={leaveFormData.status}
+                    onChange={(e) => setLeaveFormData({ ...leaveFormData, status: e.target.value as LeaveFormData['status'] })}
+                  >
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending</option>
+                    <option value="declined">Declined</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              {leaveDaysPreview > 0 && (
+                <div className="alert alert-info" style={{ maxWidth: '420px' }}>
+                  <strong>{leaveDaysPreview}</strong> day{leaveDaysPreview === 1 ? '' : 's'} recorded
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Reason</label>
+                <textarea
+                  rows={3}
+                  value={leaveFormData.reason}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, reason: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Admin / Approval Notes</label>
+                <textarea
+                  rows={3}
+                  value={leaveFormData.manager_notes}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, manager_notes: e.target.value })}
+                />
+              </div>
+
+              <div className="inline-actions">
+                <button type="submit" className="btn btn-success">
+                  {editingLeaveId ? 'Save Leave' : 'Create Leave'}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={resetLeaveForm}>Cancel</button>
+              </div>
+            </form>
+          )}
+
+          <div className="surface-panel form-grid form-grid--two" style={{ marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label>Filter by Employee</label>
+              <select
+                value={leaveFilters.employee_id}
+                onChange={(e) => setLeaveFilters({ ...leaveFilters, employee_id: e.target.value })}
+              >
+                <option value="all">All employees</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id.toString()}>
+                    {employee.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Filter by Type</label>
+              <select
+                value={leaveFilters.leave_type}
+                onChange={(e) => setLeaveFilters({ ...leaveFilters, leave_type: e.target.value })}
+              >
+                <option value="all">All types</option>
+                <option value="annual">Annual</option>
+                <option value="unpaid">Unpaid</option>
+                <option value="sick">Sick</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Filter by Status</label>
+              <select
+                value={leaveFilters.status}
+                onChange={(e) => setLeaveFilters({ ...leaveFilters, status: e.target.value })}
+              >
+                <option value="all">All statuses</option>
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+                <option value="declined">Declined</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Dates</th>
+                  <th>Days</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLeaveRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty-state">No leave records match the current filters.</div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLeaveRequests.map((request) => (
+                    <tr key={request.id}>
+                      <td>
+                        <div className="stack" style={{ gap: '4px' }}>
+                          <strong>{request.full_name}</strong>
+                          <span className="muted-text">{request.email}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="stack" style={{ gap: '4px' }}>
+                          <span>{request.start_date} to {request.end_date}</span>
+                          <span className="muted-text">
+                            {request.start_half_day || 'full'} / {request.end_half_day || 'full'}
+                          </span>
+                        </div>
+                      </td>
+                      <td>{request.days_requested}</td>
+                      <td>{formatLeaveType(request.leave_type)}</td>
+                      <td>
+                        <span className={`status-badge ${
+                          request.status === 'approved'
+                            ? 'status-approved'
+                            : request.status === 'pending'
+                              ? 'status-pending'
+                              : 'status-declined'
+                        }`}>
+                          {request.status}
+                        </span>
+                      </td>
+                      <td>{request.reason || '-'}</td>
+                      <td>{request.manager_notes || '-'}</td>
+                      <td>
+                        <div className="inline-actions">
+                          <button className="btn btn-secondary" onClick={() => handleEditLeave(request)}>
+                            Edit
+                          </button>
+                          <button className="btn btn-danger" onClick={() => handleDeleteLeave(request)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

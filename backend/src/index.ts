@@ -38,6 +38,14 @@ const LeaveRequestSchema = z.object({
   end_half_day: z.enum(['full', 'am', 'pm']).optional(),
 });
 
+const LeaveStatusSchema = z.enum(['pending', 'approved', 'declined', 'cancelled']);
+
+const AdminLeaveRequestSchema = LeaveRequestSchema.extend({
+  employee_id: z.number().int().positive(),
+  status: LeaveStatusSchema,
+  manager_notes: z.string().optional(),
+});
+
 const LeaveEntitlementSchema = z.object({
   employee_id: z.number().int().positive(),
   year: z.number().int(),
@@ -229,6 +237,16 @@ function normalizeText(value?: string): string | null {
   return trimmed ? trimmed : null;
 }
 
+async function getLeaveRequestById(env: Env, requestId: number) {
+  return env.hr_dashboard_db.prepare(`
+    SELECT lr.*, e.full_name, e.email, e.manager_email
+    FROM leave_requests lr
+    JOIN employees e ON lr.employee_id = e.id
+    WHERE lr.id = ?
+      AND lr.deleted_at IS NULL
+  `).bind(requestId).first();
+}
+
 async function getAppraisalSettings(env: Env) {
   const settings = await env.hr_dashboard_db.prepare(`
     SELECT cadence, self_review_deadline_days, manager_review_deadline_days, updated_by_email, updated_at
@@ -388,7 +406,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       const requests = await env.hr_dashboard_db.prepare(
-        'SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC'
+        'SELECT * FROM leave_requests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY created_at DESC'
       ).bind(employee.id).all();
 
       return new Response(JSON.stringify(requests.results), {
@@ -414,6 +432,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
+          AND lr.deleted_at IS NULL
       `).bind(requestId).first() as { status: string; start_date: string; employee_email: string } | null;
 
       if (!request) {
@@ -457,7 +476,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       }
 
       await env.hr_dashboard_db.prepare(
-        'UPDATE leave_requests SET status = ?, updated_at = datetime("now") WHERE id = ?'
+        'UPDATE leave_requests SET status = ?, updated_at = datetime("now") WHERE id = ? AND deleted_at IS NULL'
       ).bind('cancelled', requestId).run();
 
       return new Response(JSON.stringify({ success: true }), {
@@ -519,6 +538,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.status = 'pending'
+        AND lr.deleted_at IS NULL
         AND (
           e.manager_email = ?
           OR (? = 1 AND e.email = ?)
@@ -535,6 +555,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
             FROM leave_requests lr
             JOIN employees e ON lr.employee_id = e.id
             WHERE lr.status = 'approved'
+            AND lr.deleted_at IS NULL
             AND lr.id != ?
             AND lr.start_date <= ?
             AND lr.end_date >= ?
@@ -566,6 +587,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.status = 'approved'
+        AND lr.deleted_at IS NULL
         ORDER BY lr.start_date ASC, e.full_name ASC
       `).all();
 
@@ -874,6 +896,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
+          AND lr.deleted_at IS NULL
       `).bind(requestId).first();
 
       if (!request) {
@@ -902,6 +925,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           SELECT lr.id
           FROM leave_requests lr
           WHERE lr.status = 'approved'
+          AND lr.deleted_at IS NULL
           AND lr.id != ?
           AND lr.start_date <= ?
           AND lr.end_date >= ?
@@ -936,7 +960,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const newStatus = action === 'approve' ? 'approved' : 'declined';
 
       await env.hr_dashboard_db.prepare(
-        'UPDATE leave_requests SET status = ?, manager_notes = ?, updated_at = datetime("now") WHERE id = ?'
+        'UPDATE leave_requests SET status = ?, manager_notes = ?, updated_at = datetime("now") WHERE id = ? AND deleted_at IS NULL'
       ).bind(newStatus, notes, requestId).run();
 
       return new Response(JSON.stringify({ success: true }), {
@@ -973,6 +997,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
                SUM(CASE WHEN leave_type = 'sick' THEN days_requested ELSE 0 END) as sick_taken
         FROM leave_requests 
         WHERE status = 'approved' 
+        AND deleted_at IS NULL
         AND strftime('%Y', start_date) = ?
         GROUP BY employee_id
       `).bind(currentYear.toString()).all();
@@ -1100,10 +1125,166 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         SELECT lr.*, e.full_name, e.email
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.deleted_at IS NULL
         ORDER BY lr.created_at DESC
       `).all();
 
       return new Response(JSON.stringify(requests.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/leave' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AdminLeaveRequestSchema.parse(body);
+
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id FROM employees WHERE id = ?'
+      ).bind(validated.employee_id).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const startHalfDay = validated.start_half_day || 'full';
+      const endHalfDay = validated.end_half_day || 'full';
+      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+
+      const result = await env.hr_dashboard_db.prepare(`
+        INSERT INTO leave_requests (
+          employee_id, start_date, end_date, days_requested, reason, status,
+          leave_type, start_half_day, end_half_day, manager_notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        validated.employee_id,
+        validated.start_date,
+        validated.end_date,
+        days,
+        normalizeText(validated.reason) || '',
+        validated.status,
+        validated.leave_type,
+        startHalfDay,
+        endHalfDay,
+        normalizeText(validated.manager_notes)
+      ).run();
+
+      const created = await getLeaveRequestById(env, Number(result.meta.last_row_id));
+      return new Response(JSON.stringify(created), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/^\/api\/admin\/leave\/\d+$/) && method === 'PUT') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/^\/api\/admin\/leave\/(\d+)$/);
+      const requestId = Number(match?.[1]);
+      const existing = await getLeaveRequestById(env, requestId);
+
+      if (!existing) {
+        return new Response(JSON.stringify({ error: 'Request not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = AdminLeaveRequestSchema.parse(body);
+
+      const employee = await env.hr_dashboard_db.prepare(
+        'SELECT id FROM employees WHERE id = ?'
+      ).bind(validated.employee_id).first();
+
+      if (!employee) {
+        return new Response(JSON.stringify({ error: 'Employee not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const startHalfDay = validated.start_half_day || 'full';
+      const endHalfDay = validated.end_half_day || 'full';
+      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE leave_requests
+        SET employee_id = ?,
+            start_date = ?,
+            end_date = ?,
+            days_requested = ?,
+            reason = ?,
+            status = ?,
+            leave_type = ?,
+            start_half_day = ?,
+            end_half_day = ?,
+            manager_notes = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `).bind(
+        validated.employee_id,
+        validated.start_date,
+        validated.end_date,
+        days,
+        normalizeText(validated.reason) || '',
+        validated.status,
+        validated.leave_type,
+        startHalfDay,
+        endHalfDay,
+        normalizeText(validated.manager_notes),
+        requestId
+      ).run();
+
+      const updated = await getLeaveRequestById(env, requestId);
+      return new Response(JSON.stringify(updated), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/^\/api\/admin\/leave\/\d+$/) && method === 'DELETE') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/^\/api\/admin\/leave\/(\d+)$/);
+      const requestId = Number(match?.[1]);
+      const existing = await getLeaveRequestById(env, requestId);
+
+      if (!existing) {
+        return new Response(JSON.stringify({ error: 'Request not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(`
+        UPDATE leave_requests
+        SET deleted_at = datetime('now'),
+            deleted_by_email = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+          AND deleted_at IS NULL
+      `).bind(userEmail, requestId).run();
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -1446,6 +1627,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.id = ?
+          AND lr.deleted_at IS NULL
       `).bind(requestId).first();
 
       if (!request) {
@@ -1470,6 +1652,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         FROM leave_requests lr
         JOIN employees e ON lr.employee_id = e.id
         WHERE lr.status = 'approved'
+        AND lr.deleted_at IS NULL
         AND lr.id != ?
         AND lr.start_date <= ?
         AND lr.end_date >= ?

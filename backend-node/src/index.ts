@@ -39,6 +39,14 @@ const LeaveRequestSchema = z.object({
   end_half_day: z.enum(['full', 'am', 'pm']).optional(),
 });
 
+const LeaveStatusSchema = z.enum(['pending', 'approved', 'declined', 'cancelled']);
+
+const AdminLeaveRequestSchema = LeaveRequestSchema.extend({
+  employee_id: z.number().int().positive(),
+  status: LeaveStatusSchema,
+  manager_notes: z.string().optional(),
+});
+
 const LeaveEntitlementSchema = z.object({
   employee_id: z.number().int().positive(),
   year: z.number().int(),
@@ -97,6 +105,8 @@ function ensureBaseSchema() {
       manager_notes TEXT,
       start_half_day TEXT DEFAULT 'full',
       end_half_day TEXT DEFAULT 'full',
+      deleted_at TEXT,
+      deleted_by_email TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (employee_id) REFERENCES employees(id),
@@ -168,6 +178,8 @@ function ensureLeaveRequestsTableSupportsCancelled() {
       manager_notes TEXT,
       start_half_day TEXT DEFAULT 'full',
       end_half_day TEXT DEFAULT 'full',
+      deleted_at TEXT,
+      deleted_by_email TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (employee_id) REFERENCES employees(id),
@@ -176,7 +188,7 @@ function ensureLeaveRequestsTableSupportsCancelled() {
 
     INSERT INTO leave_requests_new (
       id, employee_id, start_date, end_date, days_requested, reason, leave_type,
-      status, manager_notes, start_half_day, end_half_day, created_at, updated_at
+      status, manager_notes, start_half_day, end_half_day, deleted_at, deleted_by_email, created_at, updated_at
     )
     SELECT
       id,
@@ -190,6 +202,8 @@ function ensureLeaveRequestsTableSupportsCancelled() {
       manager_notes,
       COALESCE(start_half_day, 'full'),
       COALESCE(end_half_day, 'full'),
+      NULL,
+      NULL,
       created_at,
       updated_at
     FROM leave_requests;
@@ -205,6 +219,8 @@ ensureBaseSchema();
 ensureColumn('leave_requests', 'leave_type', `TEXT DEFAULT 'annual'`);
 ensureColumn('leave_requests', 'start_half_day', `TEXT DEFAULT 'full'`);
 ensureColumn('leave_requests', 'end_half_day', `TEXT DEFAULT 'full'`);
+ensureColumn('leave_requests', 'deleted_at', `TEXT`);
+ensureColumn('leave_requests', 'deleted_by_email', `TEXT`);
 ensureLeaveRequestsTableSupportsCancelled();
 
 function getUserEmail(req: Request): string | null {
@@ -253,6 +269,21 @@ function calculateDays(
   return Math.max(0.5, wholeDays + adjustment);
 }
 
+function normalizeText(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getLeaveRequestById(requestId: number) {
+  return db.prepare(`
+    SELECT lr.*, e.full_name, e.email, e.manager_email
+    FROM leave_requests lr
+    JOIN employees e ON lr.employee_id = e.id
+    WHERE lr.id = ?
+      AND lr.deleted_at IS NULL
+  `).get(requestId) as any;
+}
+
 function requireAuth(req: Request, res: Response, next: () => void) {
   const userEmail = getUserEmail(req);
   if (!userEmail) {
@@ -285,7 +316,7 @@ app.get('/api/leave/my-requests', requireAuth, (req, res) => {
   }
 
   const requests = db
-    .prepare('SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC')
+    .prepare('SELECT * FROM leave_requests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY created_at DESC')
     .all(employee.id);
   res.json(requests);
 });
@@ -301,6 +332,7 @@ app.put('/api/leave/:id/cancel', requireAuth, (req, res) => {
       FROM leave_requests lr
       JOIN employees e ON lr.employee_id = e.id
       WHERE lr.id = ?
+        AND lr.deleted_at IS NULL
     `)
     .get(requestId) as any;
 
@@ -324,7 +356,7 @@ app.put('/api/leave/:id/cancel', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Cannot cancel: Leave has already started or passed' });
   }
 
-  db.prepare('UPDATE leave_requests SET status = ?, updated_at = datetime("now") WHERE id = ?').run('cancelled', requestId);
+  db.prepare('UPDATE leave_requests SET status = ?, updated_at = datetime("now") WHERE id = ? AND deleted_at IS NULL').run('cancelled', requestId);
   res.json({ success: true });
 });
 
@@ -368,7 +400,7 @@ app.get('/api/leave/pending', requireAuth, (req, res) => {
     SELECT lr.*, e.full_name, e.email
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
-    WHERE e.manager_email = ? AND lr.status = 'pending'
+    WHERE e.manager_email = ? AND lr.status = 'pending' AND lr.deleted_at IS NULL
     ORDER BY lr.created_at ASC
   `).all(userEmail) as any[];
 
@@ -378,6 +410,7 @@ app.get('/api/leave/pending', requireAuth, (req, res) => {
       FROM leave_requests lr
       JOIN employees e ON lr.employee_id = e.id
       WHERE lr.status = 'approved'
+      AND lr.deleted_at IS NULL
       AND lr.id != ?
       AND lr.start_date <= ?
       AND lr.end_date >= ?
@@ -414,6 +447,7 @@ app.put('/api/leave/:id/:action', requireAuth, (req, res) => {
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
     WHERE lr.id = ?
+      AND lr.deleted_at IS NULL
   `).get(requestId) as any;
 
   if (!request) {
@@ -439,7 +473,7 @@ app.put('/api/leave/:id/:action', requireAuth, (req, res) => {
   }
 
   const newStatus = action === 'approve' ? 'approved' : 'declined';
-  db.prepare('UPDATE leave_requests SET status = ?, manager_notes = ?, updated_at = datetime("now") WHERE id = ?')
+  db.prepare('UPDATE leave_requests SET status = ?, manager_notes = ?, updated_at = datetime("now") WHERE id = ? AND deleted_at IS NULL')
     .run(newStatus, validated.notes || '', requestId);
 
   res.json({ success: true });
@@ -520,6 +554,7 @@ app.get('/api/admin/employees', requireAuth, (req, res) => {
            SUM(CASE WHEN leave_type = 'sick' THEN days_requested ELSE 0 END) as sick_taken
     FROM leave_requests
     WHERE status = 'approved'
+    AND deleted_at IS NULL
     AND strftime('%Y', start_date) = ?
     GROUP BY employee_id
   `).all(currentYear.toString()) as any[];
@@ -627,10 +662,127 @@ app.get('/api/admin/all-requests', requireAuth, (req, res) => {
     SELECT lr.*, e.full_name, e.email
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
+    WHERE lr.deleted_at IS NULL
     ORDER BY lr.created_at DESC
   `).all();
 
   res.json(requests);
+});
+
+app.post('/api/admin/leave', requireAuth, (req, res) => {
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const validated = AdminLeaveRequestSchema.parse(req.body);
+  const employee = db.prepare('SELECT id FROM employees WHERE id = ?').get(validated.employee_id) as any;
+  if (!employee) {
+    return res.status(404).json({ error: 'Employee not found' });
+  }
+
+  const startHalfDay = validated.start_half_day || 'full';
+  const endHalfDay = validated.end_half_day || 'full';
+  const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+
+  const result = db.prepare(`
+    INSERT INTO leave_requests (
+      employee_id, start_date, end_date, days_requested, reason, status,
+      leave_type, start_half_day, end_half_day, manager_notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    validated.employee_id,
+    validated.start_date,
+    validated.end_date,
+    days,
+    normalizeText(validated.reason) || '',
+    validated.status,
+    validated.leave_type,
+    startHalfDay,
+    endHalfDay,
+    normalizeText(validated.manager_notes)
+  );
+
+  res.json(getLeaveRequestById(Number(result.lastInsertRowid)));
+});
+
+app.put('/api/admin/leave/:id', requireAuth, (req, res) => {
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const requestId = parseInt(req.params.id, 10);
+  const existing = getLeaveRequestById(requestId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Request not found' });
+  }
+
+  const validated = AdminLeaveRequestSchema.parse(req.body);
+  const employee = db.prepare('SELECT id FROM employees WHERE id = ?').get(validated.employee_id) as any;
+  if (!employee) {
+    return res.status(404).json({ error: 'Employee not found' });
+  }
+
+  const startHalfDay = validated.start_half_day || 'full';
+  const endHalfDay = validated.end_half_day || 'full';
+  const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+
+  db.prepare(`
+    UPDATE leave_requests
+    SET employee_id = ?,
+        start_date = ?,
+        end_date = ?,
+        days_requested = ?,
+        reason = ?,
+        status = ?,
+        leave_type = ?,
+        start_half_day = ?,
+        end_half_day = ?,
+        manager_notes = ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+      AND deleted_at IS NULL
+  `).run(
+    validated.employee_id,
+    validated.start_date,
+    validated.end_date,
+    days,
+    normalizeText(validated.reason) || '',
+    validated.status,
+    validated.leave_type,
+    startHalfDay,
+    endHalfDay,
+    normalizeText(validated.manager_notes),
+    requestId
+  );
+
+  res.json(getLeaveRequestById(requestId));
+});
+
+app.delete('/api/admin/leave/:id', requireAuth, (req, res) => {
+  const userEmail = (req as any).userEmail;
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const requestId = parseInt(req.params.id, 10);
+  const existing = getLeaveRequestById(requestId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Request not found' });
+  }
+
+  db.prepare(`
+    UPDATE leave_requests
+    SET deleted_at = datetime('now'),
+        deleted_by_email = ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+      AND deleted_at IS NULL
+  `).run(userEmail, requestId);
+
+  res.json({ success: true });
 });
 
 app.get('/api/leave/:id/conflicts', requireAuth, (req, res) => {
@@ -643,6 +795,7 @@ app.get('/api/leave/:id/conflicts', requireAuth, (req, res) => {
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
     WHERE lr.id = ?
+      AND lr.deleted_at IS NULL
   `).get(requestId) as any;
 
   if (!request) {
@@ -658,6 +811,7 @@ app.get('/api/leave/:id/conflicts', requireAuth, (req, res) => {
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
     WHERE lr.status = 'approved'
+    AND lr.deleted_at IS NULL
     AND lr.id != ?
     AND lr.start_date <= ?
     AND lr.end_date >= ?
