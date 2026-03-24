@@ -131,6 +131,7 @@ function markMigrationApplied(fileName) {
 
 function bootstrapExistingSchema(appliedMigrations) {
   const tableNames = getTableNames();
+  const employeeColumns = getColumnNames('employees');
   const leaveRequestColumns = getColumnNames('leave_requests');
   const leaveRequestsSql = getTableSql('leave_requests');
 
@@ -160,6 +161,26 @@ function bootstrapExistingSchema(appliedMigrations) {
     {
       file: '0005_leave_type.sql',
       applied: leaveRequestColumns.has('leave_type'),
+    },
+    {
+      file: '0006_employee_onedrive_workflow.sql',
+      applied:
+        employeeColumns.has('onedrive_shared_with_employee') &&
+        employeeColumns.has('onedrive_extra_access_links'),
+    },
+    {
+      file: '0007_appraisals.sql',
+      applied:
+        tableNames.has('appraisal_settings') &&
+        tableNames.has('appraisal_areas') &&
+        tableNames.has('appraisals') &&
+        tableNames.has('appraisal_area_responses'),
+    },
+    {
+      file: '0008_leave_soft_delete.sql',
+      applied:
+        leaveRequestColumns.has('deleted_at') &&
+        leaveRequestColumns.has('deleted_by_email'),
     },
   ];
 
