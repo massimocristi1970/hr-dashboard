@@ -67,6 +67,11 @@ const BlockedDaySchema = z.object({
   reason: z.string().min(1),
 });
 
+const BankHolidaySchema = z.object({
+  holiday_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  description: z.string().min(1),
+});
+
 const ApprovalSchema = z.object({
   notes: z.string().optional(),
   admin_override: z.boolean().optional(),
@@ -244,29 +249,68 @@ function isHrAdmin(email: string): boolean {
   return adminEmails.includes(email.toLowerCase());
 }
 
+function parseDateString(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDateString(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+function getDatesInRange(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = parseDateString(startDate);
+  const end = parseDateString(endDate);
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    dates.push(formatDateString(d));
+  }
+
+  return dates;
+}
+
+function isWeekendDate(dateString: string): boolean {
+  const day = parseDateString(dateString).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+function getHolidayDateSet(startDate: string, endDate: string): Set<string> {
+  const holidays = db.prepare(`
+    SELECT holiday_date
+    FROM holidays_calendar
+    WHERE holiday_date >= ?
+      AND holiday_date <= ?
+  `).all(startDate, endDate) as Array<{ holiday_date: string }>;
+
+  return new Set(holidays.map((holiday) => holiday.holiday_date));
+}
+
 function calculateDays(
   startDate: string,
   endDate: string,
   startHalfDay: 'full' | 'am' | 'pm' = 'full',
   endHalfDay: 'full' | 'am' | 'pm' = 'full'
 ): number {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  const holidayDates = getHolidayDateSet(startDate, endDate);
+  const workingDates = getDatesInRange(startDate, endDate).filter(
+    (date) => !isWeekendDate(date) && !holidayDates.has(date)
+  );
+
+  if (workingDates.length === 0) {
+    return 0;
+  }
 
   if (startDate === endDate) {
     if (startHalfDay === 'full') return 1;
     return 0.5;
   }
 
-  let adjustment = 0;
-  if (startHalfDay === 'am') adjustment -= 0.5;
-  if (startHalfDay === 'pm') adjustment -= 0.5;
-  if (endHalfDay === 'am') adjustment -= 0.5;
-  if (endHalfDay === 'pm') adjustment -= 0.5;
+  let total = workingDates.length;
+  if (workingDates.includes(startDate) && startHalfDay !== 'full') total -= 0.5;
+  if (workingDates.includes(endDate) && endHalfDay !== 'full') total -= 0.5;
 
-  return Math.max(0.5, wholeDays + adjustment);
+  return Math.max(0, total);
 }
 
 function normalizeText(value?: string): string | null {
@@ -275,13 +319,60 @@ function normalizeText(value?: string): string | null {
 }
 
 function getLeaveRequestById(requestId: number) {
-  return db.prepare(`
+  const request = db.prepare(`
     SELECT lr.*, e.full_name, e.email, e.manager_email
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
     WHERE lr.id = ?
       AND lr.deleted_at IS NULL
   `).get(requestId) as any;
+
+  if (!request) {
+    return null;
+  }
+
+  return applyCalculatedDays(request);
+}
+
+function applyCalculatedDays<T extends {
+  id?: number;
+  start_date: string;
+  end_date: string;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  days_requested?: number;
+}>(request: T): T {
+  const days = calculateDays(
+    request.start_date,
+    request.end_date,
+    request.start_half_day || 'full',
+    request.end_half_day || 'full'
+  );
+
+  if (typeof request.id === 'number' && request.days_requested !== days) {
+    db.prepare(`
+      UPDATE leave_requests
+      SET days_requested = ?, updated_at = datetime('now')
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `).run(days, request.id);
+  }
+
+  return {
+    ...request,
+    days_requested: days,
+  };
+}
+
+function applyCalculatedDaysToRequests<T extends {
+  id?: number;
+  start_date: string;
+  end_date: string;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  days_requested?: number;
+}>(requests: T[]): T[] {
+  return requests.map((request) => applyCalculatedDays(request));
 }
 
 function requireAuth(req: Request, res: Response, next: () => void) {
@@ -318,7 +409,7 @@ app.get('/api/leave/my-requests', requireAuth, (req, res) => {
   const requests = db
     .prepare('SELECT * FROM leave_requests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY created_at DESC')
     .all(employee.id);
-  res.json(requests);
+  res.json(applyCalculatedDaysToRequests(requests as any[]));
 });
 
 app.put('/api/leave/:id/cancel', requireAuth, (req, res) => {
@@ -405,6 +496,7 @@ app.get('/api/leave/pending', requireAuth, (req, res) => {
   `).all(userEmail) as any[];
 
   const withContext = requests.map((request) => {
+    const normalizedRequest = applyCalculatedDays(request);
     const conflicts = db.prepare(`
       SELECT lr.*, e.full_name, e.email
       FROM leave_requests lr
@@ -422,7 +514,7 @@ app.get('/api/leave/pending', requireAuth, (req, res) => {
     `).all(request.start_date, request.end_date);
 
     return {
-      ...request,
+      ...normalizedRequest,
       conflicts,
       blocked_days: blockedDays,
     };
@@ -548,15 +640,11 @@ app.get('/api/admin/employees', requireAuth, (req, res) => {
   `).all(currentYear) as any[];
 
   const approvedLeave = db.prepare(`
-    SELECT employee_id,
-           SUM(CASE WHEN leave_type = 'annual' THEN days_requested ELSE 0 END) as annual_taken,
-           SUM(CASE WHEN leave_type = 'unpaid' THEN days_requested ELSE 0 END) as unpaid_taken,
-           SUM(CASE WHEN leave_type = 'sick' THEN days_requested ELSE 0 END) as sick_taken
+    SELECT id, employee_id, start_date, end_date, days_requested, leave_type, start_half_day, end_half_day
     FROM leave_requests
     WHERE status = 'approved'
     AND deleted_at IS NULL
     AND strftime('%Y', start_date) = ?
-    GROUP BY employee_id
   `).all(currentYear.toString()) as any[];
 
   const entitlementMap = new Map<number, { allowance: number; carryover: number }>();
@@ -568,12 +656,12 @@ app.get('/api/admin/employees', requireAuth, (req, res) => {
   }
 
   const takenMap = new Map<number, { annual: number; unpaid: number; sick: number }>();
-  for (const entry of approvedLeave) {
-    takenMap.set(entry.employee_id, {
-      annual: entry.annual_taken || 0,
-      unpaid: entry.unpaid_taken || 0,
-      sick: entry.sick_taken || 0,
-    });
+  for (const entry of applyCalculatedDaysToRequests(approvedLeave)) {
+    const existing = takenMap.get(entry.employee_id) || { annual: 0, unpaid: 0, sick: 0 };
+    if (entry.leave_type === 'annual') existing.annual += entry.days_requested || 0;
+    if (entry.leave_type === 'unpaid') existing.unpaid += entry.days_requested || 0;
+    if (entry.leave_type === 'sick') existing.sick += entry.days_requested || 0;
+    takenMap.set(entry.employee_id, existing);
   }
 
   const employeesWithLeave = employees.map((employee) => {
@@ -666,7 +754,7 @@ app.get('/api/admin/all-requests', requireAuth, (req, res) => {
     ORDER BY lr.created_at DESC
   `).all();
 
-  res.json(requests);
+  res.json(applyCalculatedDaysToRequests(requests as any[]));
 });
 
 app.post('/api/admin/leave', requireAuth, (req, res) => {
@@ -833,6 +921,50 @@ app.get('/api/admin/blocked-days', requireAuth, (req, res) => {
 
   const blockedDays = db.prepare('SELECT * FROM blocked_days ORDER BY blocked_date ASC').all();
   res.json(blockedDays);
+});
+
+app.get('/api/bank-holidays', requireAuth, (req, res) => {
+  const bankHolidays = db.prepare('SELECT * FROM holidays_calendar ORDER BY holiday_date ASC').all();
+  res.json(bankHolidays);
+});
+
+app.get('/api/admin/bank-holidays', requireAuth, (req, res) => {
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const bankHolidays = db.prepare('SELECT * FROM holidays_calendar ORDER BY holiday_date ASC').all();
+  res.json(bankHolidays);
+});
+
+app.post('/api/admin/bank-holidays', requireAuth, (req, res) => {
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const validated = BankHolidaySchema.parse(req.body);
+  try {
+    db.prepare('INSERT INTO holidays_calendar (holiday_date, description) VALUES (?, ?)')
+      .run(validated.holiday_date, validated.description);
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error.message.includes('UNIQUE constraint')) {
+      return res.status(400).json({ error: 'This bank holiday already exists' });
+    }
+    throw error;
+  }
+});
+
+app.delete('/api/admin/bank-holidays/:id', requireAuth, (req, res) => {
+  const isAdmin = (req as any).isAdmin;
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  db.prepare('DELETE FROM holidays_calendar WHERE id = ?').run(parseInt(req.params.id, 10));
+  res.json({ success: true });
 });
 
 app.post('/api/admin/blocked-days', requireAuth, (req, res) => {

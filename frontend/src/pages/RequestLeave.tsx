@@ -1,43 +1,11 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
-
-// Calculate days with half day support (client-side preview)
-function calculateDaysPreview(
-  startDate: string,
-  endDate: string,
-  startHalfDay: 'full' | 'am' | 'pm',
-  endHalfDay: 'full' | 'am' | 'pm'
-): number {
-  if (!startDate || !endDate) return 0;
-  
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  
-  // If same day
-  if (startDate === endDate) {
-    if (startHalfDay === 'full') return 1;
-    return 0.5; // AM or PM = half day
-  }
-  
-  // Multiple days - adjust for half days
-  let adjustment = 0;
-  
-  // Start day adjustment
-  if (startHalfDay === 'am') adjustment -= 0.5; // Only taking morning of first day
-  if (startHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of first day
-  
-  // End day adjustment  
-  if (endHalfDay === 'am') adjustment -= 0.5; // Only taking morning of last day
-  if (endHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of last day
-  
-  return Math.max(0.5, wholeDays + adjustment);
-}
+import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
 
 export default function RequestLeave() {
   const navigate = useNavigate();
+  const [bankHolidayDates, setBankHolidayDates] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     start_date: '',
     end_date: '',
@@ -52,14 +20,25 @@ export default function RequestLeave() {
 
   // Update days preview when dates or half day options change
   useEffect(() => {
-    const days = calculateDaysPreview(
+    const days = calculateWorkingLeaveDays(
       formData.start_date,
       formData.end_date,
       formData.start_half_day,
-      formData.end_half_day
+      formData.end_half_day,
+      bankHolidayDates
     );
     setDaysPreview(days);
-  }, [formData.start_date, formData.end_date, formData.start_half_day, formData.end_half_day]);
+  }, [bankHolidayDates, formData.start_date, formData.end_date, formData.start_half_day, formData.end_half_day]);
+
+  useEffect(() => {
+    api.getBankHolidays()
+      .then((holidays: Array<{ holiday_date: string }>) => {
+        setBankHolidayDates(holidays.map((holiday) => holiday.holiday_date));
+      })
+      .catch(() => {
+        setBankHolidayDates([]);
+      });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

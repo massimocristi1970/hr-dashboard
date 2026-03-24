@@ -68,6 +68,11 @@ const BlockedDaySchema = z.object({
   reason: z.string().min(1),
 });
 
+const BankHolidaySchema = z.object({
+  holiday_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  description: z.string().min(1),
+});
+
 // Schema for leave approval with admin override option
 const ApprovalSchema = z.object({
   notes: z.string().optional(),
@@ -141,48 +146,114 @@ function isSelfManagedApprover(email: string): boolean {
   return SELF_MANAGED_APPROVER_EMAILS.has(email.trim().toLowerCase());
 }
 
-// Helper: Calculate days between two dates with half day support
-function calculateDays(
-  startDate: string, 
-  endDate: string, 
-  startHalfDay: 'full' | 'am' | 'pm' = 'full',
-  endHalfDay: 'full' | 'am' | 'pm' = 'full'
-): number {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
-  
-  // If same day
-  if (startDate === endDate) {
-    if (startHalfDay === 'full') return 1;
-    return 0.5; // AM or PM = half day
-  }
-  
-  // Multiple days - adjust for half days
-  let adjustment = 0;
-  
-  // Start day adjustment
-  if (startHalfDay === 'am') adjustment -= 0.5; // Only taking morning of first day
-  if (startHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of first day
-  
-  // End day adjustment  
-  if (endHalfDay === 'am') adjustment -= 0.5; // Only taking morning of last day
-  if (endHalfDay === 'pm') adjustment -= 0.5; // Only taking afternoon of last day
-  
-  return Math.max(0.5, wholeDays + adjustment);
+function parseDateString(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDateString(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 // Helper: Get all dates in a range (inclusive)
 function getDatesInRange(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  
+  const start = parseDateString(startDate);
+  const end = parseDateString(endDate);
+
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(formatDateString(d));
   }
   return dates;
+}
+
+function isWeekendDate(dateString: string): boolean {
+  const day = parseDateString(dateString).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+async function getHolidayDateSet(env: Env, startDate: string, endDate: string): Promise<Set<string>> {
+  const holidays = await env.hr_dashboard_db.prepare(`
+    SELECT holiday_date
+    FROM holidays_calendar
+    WHERE holiday_date >= ?
+      AND holiday_date <= ?
+  `).bind(startDate, endDate).all();
+
+  return new Set((holidays.results as Array<{ holiday_date: string }>).map((holiday) => holiday.holiday_date));
+}
+
+async function calculateDays(
+  env: Env,
+  startDate: string,
+  endDate: string,
+  startHalfDay: 'full' | 'am' | 'pm' = 'full',
+  endHalfDay: 'full' | 'am' | 'pm' = 'full'
+): Promise<number> {
+  const holidayDates = await getHolidayDateSet(env, startDate, endDate);
+  const workingDates = getDatesInRange(startDate, endDate).filter(
+    (date) => !isWeekendDate(date) && !holidayDates.has(date)
+  );
+
+  if (workingDates.length === 0) {
+    return 0;
+  }
+
+  if (startDate === endDate) {
+    return startHalfDay === 'full' ? 1 : 0.5;
+  }
+
+  let total = workingDates.length;
+  if (workingDates.includes(startDate) && startHalfDay !== 'full') {
+    total -= 0.5;
+  }
+  if (workingDates.includes(endDate) && endHalfDay !== 'full') {
+    total -= 0.5;
+  }
+
+  return Math.max(0, total);
+}
+
+async function applyCalculatedDays<T extends {
+  id?: number;
+  start_date: string;
+  end_date: string;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  days_requested?: number;
+}>(env: Env, request: T): Promise<T> {
+  const days = await calculateDays(
+    env,
+    request.start_date,
+    request.end_date,
+    request.start_half_day || 'full',
+    request.end_half_day || 'full'
+  );
+
+  if (typeof request.id === 'number' && request.days_requested !== days) {
+    await env.hr_dashboard_db.prepare(`
+      UPDATE leave_requests
+      SET days_requested = ?, updated_at = datetime('now')
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `).bind(days, request.id).run();
+  }
+
+  return {
+    ...request,
+    days_requested: days,
+  };
+}
+
+async function applyCalculatedDaysToRequests<T extends {
+  id?: number;
+  start_date: string;
+  end_date: string;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  days_requested?: number;
+}>(env: Env, requests: T[]): Promise<T[]> {
+  return Promise.all(requests.map((request) => applyCalculatedDays(env, request)));
 }
 
 // Helper: Check if two date ranges overlap
@@ -238,13 +309,19 @@ function normalizeText(value?: string): string | null {
 }
 
 async function getLeaveRequestById(env: Env, requestId: number) {
-  return env.hr_dashboard_db.prepare(`
+  const request = await env.hr_dashboard_db.prepare(`
     SELECT lr.*, e.full_name, e.email, e.manager_email
     FROM leave_requests lr
     JOIN employees e ON lr.employee_id = e.id
     WHERE lr.id = ?
       AND lr.deleted_at IS NULL
-  `).bind(requestId).first();
+  `).bind(requestId).first() as any;
+
+  if (!request) {
+    return null;
+  }
+
+  return applyCalculatedDays(env, request);
 }
 
 async function getAppraisalSettings(env: Env) {
@@ -409,7 +486,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         'SELECT * FROM leave_requests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY created_at DESC'
       ).bind(employee.id).all();
 
-      return new Response(JSON.stringify(requests.results), {
+      const normalizedRequests = await applyCalculatedDaysToRequests(env, requests.results as any[]);
+
+      return new Response(JSON.stringify(normalizedRequests), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -502,7 +581,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const startHalfDay = validated.start_half_day || 'full';
       const endHalfDay = validated.end_half_day || 'full';
-      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+      const days = await calculateDays(env, validated.start_date, validated.end_date, startHalfDay, endHalfDay);
 
       await env.hr_dashboard_db.prepare(
         'INSERT INTO leave_requests (employee_id, start_date, end_date, days_requested, reason, status, leave_type, start_half_day, end_half_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -549,6 +628,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       // For each request, find conflicts and blocked days
       const requestsWithConflicts = await Promise.all(
         (requests.results as any[]).map(async (req) => {
+          const normalizedRequest = await applyCalculatedDays(env, req);
           // Find conflicting approved leave
           const conflicts = await env.hr_dashboard_db.prepare(`
             SELECT lr.*, e.full_name, e.email
@@ -568,7 +648,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
           `).bind(req.start_date, req.end_date).all();
 
           return {
-            ...req,
+            ...normalizedRequest,
             conflicts: conflicts.results,
             blocked_days: blockedDays.results,
           };
@@ -591,7 +671,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         ORDER BY lr.start_date ASC, e.full_name ASC
       `).all();
 
-      return new Response(JSON.stringify(requests.results), {
+      const normalizedRequests = await applyCalculatedDaysToRequests(env, requests.results as any[]);
+
+      return new Response(JSON.stringify(normalizedRequests), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -990,16 +1072,12 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       `).bind(currentYear).all();
       
       // Get approved leave days for current year
-      const approvedLeave = await env.hr_dashboard_db.prepare(`
-        SELECT employee_id,
-               SUM(CASE WHEN leave_type = 'annual' THEN days_requested ELSE 0 END) as annual_taken,
-               SUM(CASE WHEN leave_type = 'unpaid' THEN days_requested ELSE 0 END) as unpaid_taken,
-               SUM(CASE WHEN leave_type = 'sick' THEN days_requested ELSE 0 END) as sick_taken
-        FROM leave_requests 
-        WHERE status = 'approved' 
+      const approvedLeaveRequests = await env.hr_dashboard_db.prepare(`
+        SELECT id, employee_id, start_date, end_date, days_requested, leave_type, start_half_day, end_half_day
+        FROM leave_requests
+        WHERE status = 'approved'
         AND deleted_at IS NULL
         AND strftime('%Y', start_date) = ?
-        GROUP BY employee_id
       `).bind(currentYear.toString()).all();
       
       // Build lookup maps
@@ -1012,12 +1090,13 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       });
       
       const takenMap = new Map<number, { annual: number; unpaid: number; sick: number }>();
-      (approvedLeave.results as any[]).forEach((l: any) => {
-        takenMap.set(l.employee_id, {
-          annual: l.annual_taken || 0,
-          unpaid: l.unpaid_taken || 0,
-          sick: l.sick_taken || 0,
-        });
+      const normalizedApprovedLeave = await applyCalculatedDaysToRequests(env, approvedLeaveRequests.results as any[]);
+      normalizedApprovedLeave.forEach((request: any) => {
+        const existing = takenMap.get(request.employee_id) || { annual: 0, unpaid: 0, sick: 0 };
+        if (request.leave_type === 'annual') existing.annual += request.days_requested;
+        if (request.leave_type === 'unpaid') existing.unpaid += request.days_requested;
+        if (request.leave_type === 'sick') existing.sick += request.days_requested;
+        takenMap.set(request.employee_id, existing);
       });
       
       // Combine data
@@ -1129,7 +1208,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         ORDER BY lr.created_at DESC
       `).all();
 
-      return new Response(JSON.stringify(requests.results), {
+      const normalizedRequests = await applyCalculatedDaysToRequests(env, requests.results as any[]);
+
+      return new Response(JSON.stringify(normalizedRequests), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }
@@ -1158,7 +1239,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const startHalfDay = validated.start_half_day || 'full';
       const endHalfDay = validated.end_half_day || 'full';
-      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+      const days = await calculateDays(env, validated.start_date, validated.end_date, startHalfDay, endHalfDay);
 
       const result = await env.hr_dashboard_db.prepare(`
         INSERT INTO leave_requests (
@@ -1219,7 +1300,7 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
 
       const startHalfDay = validated.start_half_day || 'full';
       const endHalfDay = validated.end_half_day || 'full';
-      const days = calculateDays(validated.start_date, validated.end_date, startHalfDay, endHalfDay);
+      const days = await calculateDays(env, validated.start_date, validated.end_date, startHalfDay, endHalfDay);
 
       await env.hr_dashboard_db.prepare(`
         UPDATE leave_requests
@@ -1668,6 +1749,92 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
         conflicting_leave: conflicts.results,
         blocked_days: blockedDays.results,
       }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    // ============================================================
+    // BANK HOLIDAY MANAGEMENT
+    // ============================================================
+
+    if (path === '/api/bank-holidays' && method === 'GET') {
+      const bankHolidays = await env.hr_dashboard_db.prepare(
+        'SELECT * FROM holidays_calendar ORDER BY holiday_date ASC'
+      ).all();
+
+      return new Response(JSON.stringify(bankHolidays.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/bank-holidays' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const bankHolidays = await env.hr_dashboard_db.prepare(
+        'SELECT * FROM holidays_calendar ORDER BY holiday_date ASC'
+      ).all();
+
+      return new Response(JSON.stringify(bankHolidays.results), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/bank-holidays' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = BankHolidaySchema.parse(body);
+
+      try {
+        await env.hr_dashboard_db.prepare(
+          'INSERT INTO holidays_calendar (holiday_date, description) VALUES (?, ?)'
+        ).bind(validated.holiday_date, validated.description).run();
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      } catch (e: any) {
+        if (e.message.includes('UNIQUE constraint')) {
+          return new Response(JSON.stringify({ error: 'This bank holiday already exists' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+          });
+        }
+        throw e;
+      }
+    }
+
+    if (path.startsWith('/api/admin/bank-holidays/') && method === 'DELETE') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/\/api\/admin\/bank-holidays\/(\d+)/);
+      if (!match) {
+        return new Response(JSON.stringify({ error: 'Invalid path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      await env.hr_dashboard_db.prepare(
+        'DELETE FROM holidays_calendar WHERE id = ?'
+      ).bind(parseInt(match[1])).run();
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }

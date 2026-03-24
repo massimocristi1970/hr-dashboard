@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
 
 interface LeaveSummary {
   year: number;
@@ -53,6 +54,12 @@ interface BlockedDay {
   reason: string;
   created_by_email: string;
   created_at: string;
+}
+
+interface BankHoliday {
+  id: number;
+  holiday_date: string;
+  description: string;
 }
 
 interface AppraisalSettings {
@@ -153,30 +160,6 @@ function mapLeaveToForm(request: AdminLeaveRequest): LeaveFormData {
   };
 }
 
-function calculateLeaveDays(
-  startDate: string,
-  endDate: string,
-  startHalfDay: 'full' | 'am' | 'pm',
-  endHalfDay: 'full' | 'am' | 'pm'
-): number {
-  if (!startDate || !endDate) return 0;
-
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const wholeDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-  if (startDate === endDate) {
-    return startHalfDay === 'full' ? 1 : 0.5;
-  }
-
-  let adjustment = 0;
-  if (startHalfDay === 'am' || startHalfDay === 'pm') adjustment -= 0.5;
-  if (endHalfDay === 'am' || endHalfDay === 'pm') adjustment -= 0.5;
-
-  return Math.max(0.5, wholeDays + adjustment);
-}
-
 function formatLeaveType(type: AdminLeaveRequest['leave_type']) {
   if (type === 'annual') return 'Annual Leave';
   if (type === 'unpaid') return 'Unpaid Leave';
@@ -198,14 +181,16 @@ export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<AdminLeaveRequest[]>([]);
   const [blockedDays, setBlockedDays] = useState<BlockedDay[]>([]);
+  const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
   const [appraisalAdmin, setAppraisalAdmin] = useState<AppraisalAdminPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
+  const [showBankHolidayForm, setShowBankHolidayForm] = useState(false);
   const [showAppraisalAreaForm, setShowAppraisalAreaForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'appraisals'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'bank-holidays' | 'appraisals'>('employees');
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
   const [editingLeaveId, setEditingLeaveId] = useState<number | null>(null);
   const [leaveFilters, setLeaveFilters] = useState({
@@ -220,6 +205,10 @@ export default function HrAdmin() {
   const [blockedDayFormData, setBlockedDayFormData] = useState({
     blocked_date: '',
     reason: '',
+  });
+  const [bankHolidayFormData, setBankHolidayFormData] = useState({
+    holiday_date: '',
+    description: '',
   });
 
   const [appraisalSettingsForm, setAppraisalSettingsForm] = useState<AppraisalSettings>({
@@ -247,15 +236,17 @@ export default function HrAdmin() {
   async function loadData() {
     try {
       setLoading(true);
-      const [employeesData, requestsData, blockedDaysData, appraisalData] = await Promise.all([
+      const [employeesData, requestsData, blockedDaysData, bankHolidaysData, appraisalData] = await Promise.all([
         api.getAllEmployees(),
         api.getAllRequests(),
         api.getBlockedDays(),
+        api.getAdminBankHolidays(),
         api.getAppraisalAdminData(),
       ]);
       setEmployees(employeesData);
       setLeaveRequests(requestsData);
       setBlockedDays(blockedDaysData);
+      setBankHolidays(bankHolidaysData);
       setAppraisalAdmin(appraisalData);
       setAppraisalSettingsForm(appraisalData.settings);
     } catch (err: any) {
@@ -484,6 +475,33 @@ export default function HrAdmin() {
     }
   }
 
+  async function handleAddBankHoliday(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.addBankHoliday(bankHolidayFormData);
+      alert('Bank holiday added.');
+      setBankHolidayFormData({ holiday_date: '', description: '' });
+      setShowBankHolidayForm(false);
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleDeleteBankHoliday(id: number, date: string) {
+    if (!confirm(`Are you sure you want to remove the bank holiday on ${date}?`)) {
+      return;
+    }
+
+    try {
+      await api.deleteBankHoliday(id);
+      alert('Bank holiday removed.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   async function handleSaveAppraisalSettings(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -559,11 +577,12 @@ export default function HrAdmin() {
 
   const configuredFolders = employees.filter((employee) => employee.onedrive_folder_url).length;
   const sharedFolders = employees.filter((employee) => employee.onedrive_shared_with_employee).length;
-  const leaveDaysPreview = calculateLeaveDays(
+  const leaveDaysPreview = calculateWorkingLeaveDays(
     leaveFormData.start_date,
     leaveFormData.end_date,
     leaveFormData.start_half_day,
-    leaveFormData.end_half_day
+    leaveFormData.end_half_day,
+    bankHolidays.map((holiday) => holiday.holiday_date)
   );
   const filteredLeaveRequests = leaveRequests.filter((request) => {
     if (leaveFilters.employee_id !== 'all' && request.employee_id.toString() !== leaveFilters.employee_id) {
@@ -625,6 +644,12 @@ export default function HrAdmin() {
           onClick={() => setActiveTab('blocked-days')}
         >
           Blocked Days
+        </button>
+        <button
+          className={activeTab === 'bank-holidays' ? 'btn' : 'btn btn-secondary'}
+          onClick={() => setActiveTab('bank-holidays')}
+        >
+          Bank Holidays
         </button>
         <button
           className={activeTab === 'appraisals' ? 'btn' : 'btn btn-secondary'}
@@ -1268,6 +1293,89 @@ export default function HrAdmin() {
                         <button
                           className="btn btn-danger"
                           onClick={() => handleDeleteBlockedDay(day.id, day.blocked_date)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'bank-holidays' && (
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Bank Holidays</h2>
+              <p>
+                Manage the holiday calendar used when annual leave is calculated.
+                Weekends and these dates are excluded from deducted leave days.
+              </p>
+            </div>
+          </div>
+
+          <button
+            className="btn"
+            onClick={() => setShowBankHolidayForm(!showBankHolidayForm)}
+            style={{ marginBottom: '1rem' }}
+          >
+            {showBankHolidayForm ? 'Cancel' : 'Add Bank Holiday'}
+          </button>
+
+          {showBankHolidayForm && (
+            <form onSubmit={handleAddBankHoliday} className="surface-panel form-grid" style={{ marginBottom: '1.5rem' }}>
+              <div className="form-group">
+                <label>Holiday Date</label>
+                <input
+                  type="date"
+                  required
+                  value={bankHolidayFormData.holiday_date}
+                  onChange={(e) => setBankHolidayFormData({ ...bankHolidayFormData, holiday_date: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Christmas Day"
+                  value={bankHolidayFormData.description}
+                  onChange={(e) => setBankHolidayFormData({ ...bankHolidayFormData, description: e.target.value })}
+                />
+              </div>
+              <div className="inline-actions">
+                <button type="submit" className="btn btn-success">Save Bank Holiday</button>
+              </div>
+            </form>
+          )}
+
+          {bankHolidays.length === 0 ? (
+            <div className="empty-state">No bank holidays configured.</div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankHolidays.map((holiday) => (
+                    <tr key={holiday.id}>
+                      <td>
+                        <strong>{holiday.holiday_date}</strong>
+                      </td>
+                      <td>{holiday.description}</td>
+                      <td>
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleDeleteBankHoliday(holiday.id, holiday.holiday_date)}
                         >
                           Remove
                         </button>

@@ -188,6 +188,21 @@ export const api = {
       method: 'DELETE',
     }),
 
+  getBankHolidays: () => fetchAPI('/api/bank-holidays'),
+
+  getAdminBankHolidays: () => fetchAPI('/api/admin/bank-holidays'),
+
+  addBankHoliday: (data: { holiday_date: string; description: string }) =>
+    fetchAPI('/api/admin/bank-holidays', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteBankHoliday: (id: number) =>
+    fetchAPI(`/api/admin/bank-holidays/${id}`, {
+      method: 'DELETE',
+    }),
+
   getMyAppraisals: () => fetchOptional('/api/appraisals/my', []),
 
   submitSelfReview: (id: number, data: {

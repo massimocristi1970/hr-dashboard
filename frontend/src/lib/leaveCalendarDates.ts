@@ -26,6 +26,47 @@ export function getDatesInRange(startDate: string, endDate: string): string[] {
   return dates;
 }
 
+export function isWeekendDate(dateString: string): boolean {
+  const date = parseLocalDateString(dateString);
+  const day = date.getDay();
+  return day === 0 || day === 6;
+}
+
+export function calculateWorkingLeaveDays(
+  startDate: string,
+  endDate: string,
+  startHalfDay: 'full' | 'am' | 'pm',
+  endHalfDay: 'full' | 'am' | 'pm',
+  bankHolidayDates: string[]
+): number {
+  if (!startDate || !endDate) return 0;
+
+  const holidaySet = new Set(bankHolidayDates);
+  const workingDates = getDatesInRange(startDate, endDate).filter(
+    (date) => !isWeekendDate(date) && !holidaySet.has(date)
+  );
+
+  if (workingDates.length === 0) {
+    return 0;
+  }
+
+  if (startDate === endDate) {
+    return startHalfDay === 'full' ? 1 : 0.5;
+  }
+
+  let total = workingDates.length;
+
+  if (workingDates.includes(startDate) && startHalfDay !== 'full') {
+    total -= 0.5;
+  }
+
+  if (workingDates.includes(endDate) && endHalfDay !== 'full') {
+    total -= 0.5;
+  }
+
+  return Math.max(0, total);
+}
+
 export function getCalendarDaysForMonth(currentDate: Date): (Date | null)[][] {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
