@@ -100,6 +100,126 @@ interface AppraisalAdminPayload {
   appraisals: AppraisalRun[];
 }
 
+interface BradfordWindowSummary {
+  range_start: string;
+  range_end: string;
+  occurrences: number;
+  total_days: number;
+  bradford_score: number;
+}
+
+interface ReturnToWorkRecord {
+  id: number;
+  employee_id: number;
+  leave_request_id: number;
+  manager_name?: string | null;
+  manager_comments?: string | null;
+  employee_comments?: string | null;
+  support_actions?: string | null;
+  wellbeing_notes?: string | null;
+  manager_signature?: string | null;
+  employee_signature?: string | null;
+  manager_signed_at?: string | null;
+  employee_signed_at?: string | null;
+  form_completed_date: string;
+  return_to_work_date: string;
+  absence_days: number;
+  occurrences_last_3_months: number;
+  bradford_last_3_months: number;
+  occurrences_last_6_months: number;
+  bradford_last_6_months: number;
+  occurrences_last_9_months: number;
+  bradford_last_9_months: number;
+  occurrences_last_52_weeks: number;
+  bradford_last_52_weeks: number;
+  policy_bradford_score: number;
+  saved_document_name?: string | null;
+  saved_document_url?: string | null;
+}
+
+interface AbsenceRecord {
+  id: number;
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  reason?: string | null;
+  manager_notes?: string | null;
+  start_half_day?: 'full' | 'am' | 'pm';
+  end_half_day?: 'full' | 'am' | 'pm';
+  created_at: string;
+  updated_at: string;
+  rtw_form_id?: number | null;
+  form_completed_date?: string | null;
+  return_to_work_date?: string | null;
+  policy_bradford_score?: number | null;
+  saved_document_name?: string | null;
+  saved_document_url?: string | null;
+}
+
+interface AbsenceEmployeeSummary {
+  total_days: number;
+  total_occurrences: number;
+  policy_bradford_score: number;
+  last_3_months: BradfordWindowSummary;
+  last_6_months: BradfordWindowSummary;
+  last_9_months: BradfordWindowSummary;
+  last_52_weeks: BradfordWindowSummary;
+}
+
+interface AbsenceEmployee {
+  id: number;
+  email: string;
+  full_name: string;
+  manager_email: string;
+  onedrive_folder_url: string;
+  absence_summary: AbsenceEmployeeSummary;
+  absences: AbsenceRecord[];
+}
+
+interface ReturnToWorkDetail {
+  leave_request_id: number;
+  employee_id: number;
+  employee_name: string;
+  employee_email: string;
+  manager_email: string;
+  onedrive_folder_url: string;
+  absence: {
+    id: number;
+    start_date: string;
+    end_date: string;
+    days_requested: number;
+    reason?: string | null;
+    manager_notes?: string | null;
+    status: string;
+  };
+  metrics: {
+    last_3_months: BradfordWindowSummary;
+    last_6_months: BradfordWindowSummary;
+    last_9_months: BradfordWindowSummary;
+    last_52_weeks: BradfordWindowSummary;
+  };
+  form: ReturnToWorkRecord | null;
+}
+
+interface ReturnToWorkFormData {
+  leave_request_id: number;
+  manager_name: string;
+  manager_comments: string;
+  employee_comments: string;
+  support_actions: string;
+  wellbeing_notes: string;
+  manager_signature: string;
+  employee_signature: string;
+  manager_signed_at: string;
+  employee_signed_at: string;
+  form_completed_date: string;
+  return_to_work_date: string;
+  saved_document_name: string;
+  saved_document_url: string;
+}
+
 interface EmployeeFormData {
   email: string;
   full_name: string;
@@ -177,12 +297,111 @@ function mapEmployeeToForm(employee: Employee): EmployeeFormData {
   };
 }
 
+function getTodayDateString() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function createEmptyReturnToWorkForm(leaveRequestId = 0): ReturnToWorkFormData {
+  const today = getTodayDateString();
+  return {
+    leave_request_id: leaveRequestId,
+    manager_name: '',
+    manager_comments: '',
+    employee_comments: '',
+    support_actions: '',
+    wellbeing_notes: '',
+    manager_signature: '',
+    employee_signature: '',
+    manager_signed_at: today,
+    employee_signed_at: today,
+    form_completed_date: today,
+    return_to_work_date: today,
+    saved_document_name: '',
+    saved_document_url: '',
+  };
+}
+
+function formatBradfordWindowLabel(key: 'last_3_months' | 'last_6_months' | 'last_9_months' | 'last_52_weeks') {
+  if (key === 'last_3_months') return 'Last Full 3 Months';
+  if (key === 'last_6_months') return 'Last Full 6 Months';
+  if (key === 'last_9_months') return 'Last Full 9 Months';
+  return 'Rolling 52 Weeks';
+}
+
+function buildReturnToWorkFilename(detail: ReturnToWorkDetail) {
+  const safeEmployee = detail.employee_name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '');
+  return `RTW-${safeEmployee || 'employee'}-${detail.absence.end_date}.html`;
+}
+
+function buildReturnToWorkHtml(detail: ReturnToWorkDetail, form: ReturnToWorkFormData) {
+  const metricRows: Array<{ label: string; metric: BradfordWindowSummary }> = [
+    { label: 'Last Full 3 Months', metric: detail.metrics.last_3_months },
+    { label: 'Last Full 6 Months', metric: detail.metrics.last_6_months },
+    { label: 'Last Full 9 Months', metric: detail.metrics.last_9_months },
+    { label: 'Rolling 52 Weeks', metric: detail.metrics.last_52_weeks },
+  ];
+
+  const escapeHtml = (value?: string | null) =>
+    (value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Return to Work Form</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #17324d; }
+    h1, h2 { margin-bottom: 8px; color: #0e5ea8; }
+    .panel { border: 1px solid #cfe0f2; border-radius: 14px; padding: 18px; margin-bottom: 18px; background: #f8fbff; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #5a7189; }
+    .value { font-size: 14px; font-weight: 600; margin-top: 4px; white-space: pre-wrap; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #d7e4f2; }
+  </style>
+</head>
+<body>
+  <h1>Return to Work Form</h1>
+  <div class="panel grid">
+    <div><div class="label">Employee</div><div class="value">${escapeHtml(detail.employee_name)}</div></div>
+    <div><div class="label">Manager</div><div class="value">${escapeHtml(form.manager_name || detail.manager_email)}</div></div>
+    <div><div class="label">Absence Period</div><div class="value">${escapeHtml(detail.absence.start_date)} to ${escapeHtml(detail.absence.end_date)}</div></div>
+    <div><div class="label">Return to Work Date</div><div class="value">${escapeHtml(form.return_to_work_date)}</div></div>
+    <div><div class="label">Absence Days</div><div class="value">${detail.absence.days_requested}</div></div>
+    <div><div class="label">Policy Bradford Score</div><div class="value">${detail.metrics.last_52_weeks.bradford_score}</div></div>
+  </div>
+  <div class="panel">
+    <h2>Bradford Overview</h2>
+    <table>
+      <thead><tr><th>Window</th><th>Occurrences</th><th>Days</th><th>Score</th></tr></thead>
+      <tbody>
+        ${metricRows.map(({ label, metric }) => `<tr><td>${label}</td><td>${metric.occurrences}</td><td>${metric.total_days}</td><td>${metric.bradford_score}</td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel"><div class="label">Discussion Summary / Support Actions</div><div class="value">${escapeHtml(form.support_actions)}</div></div>
+  <div class="panel"><div class="label">Wellbeing Notes</div><div class="value">${escapeHtml(form.wellbeing_notes)}</div></div>
+  <div class="panel"><div class="label">Manager Comments</div><div class="value">${escapeHtml(form.manager_comments)}</div></div>
+  <div class="panel"><div class="label">Employee Comments</div><div class="value">${escapeHtml(form.employee_comments)}</div></div>
+  <div class="panel grid">
+    <div><div class="label">Manager Signature</div><div class="value">${escapeHtml(form.manager_signature)}</div><div class="label">Date</div><div class="value">${escapeHtml(form.manager_signed_at)}</div></div>
+    <div><div class="label">Employee Signature</div><div class="value">${escapeHtml(form.employee_signature)}</div><div class="label">Date</div><div class="value">${escapeHtml(form.employee_signed_at)}</div></div>
+  </div>
+</body>
+</html>`;
+}
+
 export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<AdminLeaveRequest[]>([]);
   const [blockedDays, setBlockedDays] = useState<BlockedDay[]>([]);
   const [bankHolidays, setBankHolidays] = useState<BankHoliday[]>([]);
   const [appraisalAdmin, setAppraisalAdmin] = useState<AppraisalAdminPayload | null>(null);
+  const [absenceAdmin, setAbsenceAdmin] = useState<AbsenceEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -190,9 +409,13 @@ export default function HrAdmin() {
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
   const [showBankHolidayForm, setShowBankHolidayForm] = useState(false);
   const [showAppraisalAreaForm, setShowAppraisalAreaForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'bank-holidays' | 'appraisals'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'bank-holidays' | 'appraisals' | 'absence'>('employees');
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
   const [editingLeaveId, setEditingLeaveId] = useState<number | null>(null);
+  const [selectedAbsenceEmployeeId, setSelectedAbsenceEmployeeId] = useState<number | null>(null);
+  const [selectedAbsenceId, setSelectedAbsenceId] = useState<number | null>(null);
+  const [returnToWorkDetail, setReturnToWorkDetail] = useState<ReturnToWorkDetail | null>(null);
+  const [returnToWorkFormData, setReturnToWorkFormData] = useState<ReturnToWorkFormData>(createEmptyReturnToWorkForm());
   const [leaveFilters, setLeaveFilters] = useState({
     employee_id: 'all',
     leave_type: 'all',
@@ -233,22 +456,42 @@ export default function HrAdmin() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (absenceAdmin.length === 0) {
+      setSelectedAbsenceEmployeeId(null);
+      setSelectedAbsenceId(null);
+      setReturnToWorkDetail(null);
+      setReturnToWorkFormData(createEmptyReturnToWorkForm());
+      return;
+    }
+
+    const employeeStillExists = absenceAdmin.some((employee) => employee.id === selectedAbsenceEmployeeId);
+    if (!employeeStillExists) {
+      setSelectedAbsenceEmployeeId(absenceAdmin[0].id);
+    }
+  }, [absenceAdmin, selectedAbsenceEmployeeId]);
+
   async function loadData() {
     try {
       setLoading(true);
-      const [employeesData, requestsData, blockedDaysData, bankHolidaysData, appraisalData] = await Promise.all([
+      const [employeesData, requestsData, blockedDaysData, bankHolidaysData, appraisalData, absenceData] = await Promise.all([
         api.getAllEmployees(),
         api.getAllRequests(),
         api.getBlockedDays(),
         api.getAdminBankHolidays(),
         api.getAppraisalAdminData(),
+        api.getAbsenceAdminData(),
       ]);
       setEmployees(employeesData);
       setLeaveRequests(requestsData);
       setBlockedDays(blockedDaysData);
       setBankHolidays(bankHolidaysData);
       setAppraisalAdmin(appraisalData);
+      setAbsenceAdmin(absenceData);
       setAppraisalSettingsForm(appraisalData.settings);
+      if (!selectedAbsenceEmployeeId && absenceData.length > 0) {
+        setSelectedAbsenceEmployeeId(absenceData[0].id);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -572,6 +815,74 @@ export default function HrAdmin() {
     }
   }
 
+  async function handleOpenReturnToWork(absence: AbsenceRecord) {
+    try {
+      const detail = await api.getReturnToWorkDetail(absence.id);
+      setSelectedAbsenceId(absence.id);
+      setReturnToWorkDetail(detail);
+      setReturnToWorkFormData({
+        leave_request_id: detail.leave_request_id,
+        manager_name: detail.form?.manager_name || detail.manager_email || '',
+        manager_comments: detail.form?.manager_comments || '',
+        employee_comments: detail.form?.employee_comments || '',
+        support_actions: detail.form?.support_actions || '',
+        wellbeing_notes: detail.form?.wellbeing_notes || '',
+        manager_signature: detail.form?.manager_signature || '',
+        employee_signature: detail.form?.employee_signature || '',
+        manager_signed_at: detail.form?.manager_signed_at || getTodayDateString(),
+        employee_signed_at: detail.form?.employee_signed_at || getTodayDateString(),
+        form_completed_date: detail.form?.form_completed_date || getTodayDateString(),
+        return_to_work_date: detail.form?.return_to_work_date || detail.absence.end_date,
+        saved_document_name: detail.form?.saved_document_name || buildReturnToWorkFilename(detail),
+        saved_document_url: detail.form?.saved_document_url || '',
+      });
+      setActiveTab('absence');
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  async function handleSaveReturnToWork(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!returnToWorkDetail) {
+      alert('Choose an absence first.');
+      return;
+    }
+
+    try {
+      const saved = await api.saveReturnToWorkForm({
+        ...returnToWorkFormData,
+        saved_document_name: returnToWorkFormData.saved_document_name || buildReturnToWorkFilename(returnToWorkDetail),
+        saved_document_url: returnToWorkFormData.saved_document_url || undefined,
+      });
+      setReturnToWorkDetail((current) => (current ? { ...current, form: saved } : current));
+      alert('Return to work form saved.');
+      loadData();
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  }
+
+  function handleDownloadReturnToWork() {
+    if (!returnToWorkDetail) {
+      alert('Choose an absence first.');
+      return;
+    }
+
+    const html = buildReturnToWorkHtml(returnToWorkDetail, returnToWorkFormData);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const filename = returnToWorkFormData.saved_document_name || buildReturnToWorkFilename(returnToWorkDetail);
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
+
   if (loading) return <div className="loading-state">Loading HR admin tools...</div>;
   if (error) return <div className="error-state">Error: {error}</div>;
 
@@ -596,6 +907,9 @@ export default function HrAdmin() {
     }
     return true;
   });
+  const selectedAbsenceEmployee = absenceAdmin.find((employee) => employee.id === selectedAbsenceEmployeeId) || absenceAdmin[0] || null;
+  const totalAbsenceOccurrences = absenceAdmin.reduce((sum, employee) => sum + employee.absences.length, 0);
+  const totalAbsenceDays = Number(absenceAdmin.reduce((sum, employee) => sum + employee.absence_summary.total_days, 0).toFixed(2));
 
   return (
     <div className="page-frame">
@@ -656,6 +970,12 @@ export default function HrAdmin() {
           onClick={() => setActiveTab('appraisals')}
         >
           Appraisals
+        </button>
+        <button
+          className={activeTab === 'absence' ? 'btn' : 'btn btn-secondary'}
+          onClick={() => setActiveTab('absence')}
+        >
+          Absence
         </button>
       </div>
 
@@ -1647,6 +1967,379 @@ export default function HrAdmin() {
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {activeTab === 'absence' && (
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Absence</h2>
+              <p>Track sickness absence from existing sick leave records, review Bradford scores, and complete return to work forms.</p>
+            </div>
+          </div>
+
+          <div className="inline-actions" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <span className="status-badge status-neutral">Employees with sickness records {absenceAdmin.length}</span>
+            <span className="status-badge status-neutral">Occurrences {totalAbsenceOccurrences}</span>
+            <span className="status-badge status-neutral">Days {totalAbsenceDays}</span>
+          </div>
+
+          {absenceAdmin.length === 0 ? (
+            <div className="empty-state">No sickness absence records found yet.</div>
+          ) : (
+            <div className="stack" style={{ gap: '1.5rem' }}>
+              <div className="surface-panel stack">
+                <div className="section-header">
+                  <div>
+                    <h3 style={{ marginBottom: '0.35rem' }}>Employees</h3>
+                    <p style={{ margin: 0 }}>Choose an employee to review absence history and complete a return to work form.</p>
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Occurrences</th>
+                        <th>Total Days</th>
+                        <th>Policy Score</th>
+                        <th>Trend Views</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {absenceAdmin.map((employee) => (
+                        <tr key={employee.id}>
+                          <td>
+                            <strong>{employee.full_name}</strong>
+                            <br />
+                            <small className="muted-text">{employee.email}</small>
+                          </td>
+                          <td>{employee.absence_summary.total_occurrences}</td>
+                          <td>{employee.absence_summary.total_days}</td>
+                          <td>
+                            <span className="status-badge status-pending">
+                              {employee.absence_summary.last_52_weeks.bradford_score}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="stack" style={{ gap: '4px' }}>
+                              <small className="muted-text">3m {employee.absence_summary.last_3_months.bradford_score}</small>
+                              <small className="muted-text">6m {employee.absence_summary.last_6_months.bradford_score}</small>
+                              <small className="muted-text">9m {employee.absence_summary.last_9_months.bradford_score}</small>
+                            </div>
+                          </td>
+                          <td>
+                            <button
+                              className={selectedAbsenceEmployee?.id === employee.id ? 'btn' : 'btn btn-secondary'}
+                              onClick={() => {
+                                setSelectedAbsenceEmployeeId(employee.id);
+                                setSelectedAbsenceId(null);
+                                setReturnToWorkDetail(null);
+                                setReturnToWorkFormData(createEmptyReturnToWorkForm());
+                              }}
+                            >
+                              {selectedAbsenceEmployee?.id === employee.id ? 'Selected' : 'View'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {selectedAbsenceEmployee && (
+                <>
+                  <div className="surface-panel stack">
+                    <div className="section-header">
+                      <div>
+                        <h3 style={{ marginBottom: '0.35rem' }}>{selectedAbsenceEmployee.full_name}</h3>
+                        <p style={{ margin: 0 }}>
+                          Policy Bradford score is based on the rolling 52-week view. Shorter windows are shown for trend spotting only.
+                        </p>
+                      </div>
+                      <div className="inline-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={!selectedAbsenceEmployee.onedrive_folder_url}
+                          onClick={() => window.open(selectedAbsenceEmployee.onedrive_folder_url, '_blank', 'noopener,noreferrer')}
+                        >
+                          Open HR Folder
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="form-grid form-grid--two">
+                      {(['last_3_months', 'last_6_months', 'last_9_months', 'last_52_weeks'] as const).map((key) => {
+                        const metric = selectedAbsenceEmployee.absence_summary[key];
+                        return (
+                          <div key={key} className="surface-panel stack" style={{ padding: '14px' }}>
+                            <h4 style={{ marginBottom: '0.35rem' }}>{formatBradfordWindowLabel(key)}</h4>
+                            <div className="inline-actions">
+                              <span className="status-badge status-neutral">Occurrences {metric.occurrences}</span>
+                              <span className="status-badge status-neutral">Days {metric.total_days}</span>
+                              <span className={key === 'last_52_weeks' ? 'status-badge status-pending' : 'status-badge status-neutral'}>
+                                Score {metric.bradford_score}
+                              </span>
+                            </div>
+                            <small className="muted-text">{metric.range_start} to {metric.range_end}</small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="surface-panel stack">
+                    <div className="section-header">
+                      <div>
+                        <h3 style={{ marginBottom: '0.35rem' }}>Sickness Episodes</h3>
+                        <p style={{ margin: 0 }}>Every row below is pulled from the existing sick leave records in the app.</p>
+                      </div>
+                    </div>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Dates</th>
+                            <th>Days</th>
+                            <th>Status</th>
+                            <th>Reason</th>
+                            <th>RTW</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedAbsenceEmployee.absences.map((absence) => (
+                            <tr key={absence.id}>
+                              <td>
+                                <strong>{absence.start_date}</strong> to <strong>{absence.end_date}</strong>
+                              </td>
+                              <td>{absence.days_requested}</td>
+                              <td>
+                                <span className={`status-badge ${
+                                  absence.status === 'approved'
+                                    ? 'status-approved'
+                                    : absence.status === 'pending'
+                                      ? 'status-pending'
+                                      : 'status-neutral'
+                                }`}>
+                                  {absence.status}
+                                </span>
+                              </td>
+                              <td>{absence.reason || '-'}</td>
+                              <td>
+                                {absence.rtw_form_id ? (
+                                  <div className="stack" style={{ gap: '4px' }}>
+                                    <span className="status-badge status-approved">Saved</span>
+                                    <small className="muted-text">
+                                      {absence.form_completed_date || 'Form saved'}
+                                    </small>
+                                  </div>
+                                ) : (
+                                  <span className="status-badge status-neutral">Not started</span>
+                                )}
+                              </td>
+                              <td>
+                                <button
+                                  className={selectedAbsenceId === absence.id ? 'btn' : 'btn btn-secondary'}
+                                  onClick={() => handleOpenReturnToWork(absence)}
+                                >
+                                  {absence.rtw_form_id ? 'Open RTW' : 'Start RTW'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {returnToWorkDetail && (
+                    <form onSubmit={handleSaveReturnToWork} className="surface-panel stack">
+                      <div className="section-header">
+                        <div>
+                          <h3 style={{ marginBottom: '0.35rem' }}>Return to Work Form</h3>
+                          <p style={{ margin: 0 }}>Simple app-style version of the RTW form with Bradford scores added automatically.</p>
+                        </div>
+                        <div className="inline-actions">
+                          <button type="button" className="btn btn-secondary" onClick={handleDownloadReturnToWork}>
+                            Download RTW
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="inline-actions" style={{ flexWrap: 'wrap' }}>
+                        <span className="status-badge status-neutral">Employee {returnToWorkDetail.employee_name}</span>
+                        <span className="status-badge status-neutral">Absence Days {returnToWorkDetail.absence.days_requested}</span>
+                        <span className="status-badge status-pending">Policy Bradford {returnToWorkDetail.metrics.last_52_weeks.bradford_score}</span>
+                      </div>
+
+                      <div className="form-grid form-grid--two">
+                        <div className="form-group">
+                          <label>Manager Name</label>
+                          <input
+                            type="text"
+                            value={returnToWorkFormData.manager_name}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, manager_name: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Return to Work Date</label>
+                          <input
+                            type="date"
+                            value={returnToWorkFormData.return_to_work_date}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, return_to_work_date: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Form Completed Date</label>
+                          <input
+                            type="date"
+                            value={returnToWorkFormData.form_completed_date}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, form_completed_date: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Suggested File Name</label>
+                          <input
+                            type="text"
+                            value={returnToWorkFormData.saved_document_name}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, saved_document_name: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label>Manager Comments</label>
+                          <textarea
+                            rows={4}
+                            value={returnToWorkFormData.manager_comments}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, manager_comments: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label>Employee Comments</label>
+                          <textarea
+                            rows={4}
+                            value={returnToWorkFormData.employee_comments}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, employee_comments: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label>Discussion Summary and Support Actions</label>
+                          <textarea
+                            rows={4}
+                            value={returnToWorkFormData.support_actions}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, support_actions: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label>Wellbeing Notes</label>
+                          <textarea
+                            rows={3}
+                            value={returnToWorkFormData.wellbeing_notes}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, wellbeing_notes: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Manager Signature</label>
+                          <input
+                            type="text"
+                            value={returnToWorkFormData.manager_signature}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, manager_signature: e.target.value })}
+                            placeholder="Type full name"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Manager Signed Date</label>
+                          <input
+                            type="date"
+                            value={returnToWorkFormData.manager_signed_at}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, manager_signed_at: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Employee Signature</label>
+                          <input
+                            type="text"
+                            value={returnToWorkFormData.employee_signature}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, employee_signature: e.target.value })}
+                            placeholder="Type full name"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Employee Signed Date</label>
+                          <input
+                            type="date"
+                            value={returnToWorkFormData.employee_signed_at}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, employee_signed_at: e.target.value })}
+                          />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label>Saved Document URL (Optional)</label>
+                          <input
+                            type="url"
+                            placeholder="Paste the Wellbeing folder file link after uploading"
+                            value={returnToWorkFormData.saved_document_url}
+                            onChange={(e) => setReturnToWorkFormData({ ...returnToWorkFormData, saved_document_url: e.target.value })}
+                          />
+                          <small className="form-help">
+                            The app generates the RTW file for download. If you upload it into the employee&apos;s Wellbeing folder, you can paste that saved file link here.
+                          </small>
+                        </div>
+                      </div>
+
+                      <div className="surface-panel stack" style={{ padding: '14px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>Bradford Score Snapshot</h4>
+                        <div className="table-wrap">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Window</th>
+                                <th>Occurrences</th>
+                                <th>Days</th>
+                                <th>Score</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(['last_3_months', 'last_6_months', 'last_9_months', 'last_52_weeks'] as const).map((key) => {
+                                const metric = returnToWorkDetail.metrics[key];
+                                return (
+                                  <tr key={key}>
+                                    <td>{formatBradfordWindowLabel(key)}</td>
+                                    <td>{metric.occurrences}</td>
+                                    <td>{metric.total_days}</td>
+                                    <td>{metric.bradford_score}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="inline-actions">
+                        <button type="submit" className="btn btn-success">Save RTW Form</button>
+                        <button type="button" className="btn btn-secondary" onClick={handleDownloadReturnToWork}>
+                          Download HTML Copy
+                        </button>
+                        {returnToWorkDetail.onedrive_folder_url && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => window.open(returnToWorkDetail.onedrive_folder_url, '_blank', 'noopener,noreferrer')}
+                          >
+                            Open Employee Folder
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>

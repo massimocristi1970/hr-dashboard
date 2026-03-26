@@ -124,6 +124,23 @@ const AppraisalLaunchSchema = z.object({
   cycle_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+const ReturnToWorkFormSchema = z.object({
+  leave_request_id: z.number().int().positive(),
+  manager_name: z.string().optional(),
+  manager_comments: z.string().optional(),
+  employee_comments: z.string().optional(),
+  support_actions: z.string().optional(),
+  wellbeing_notes: z.string().optional(),
+  manager_signature: z.string().optional(),
+  employee_signature: z.string().optional(),
+  manager_signed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  employee_signed_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  form_completed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  return_to_work_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  saved_document_name: z.string().optional(),
+  saved_document_url: z.string().url().optional().or(z.literal('')),
+});
+
 // Helper: Get user email from Cloudflare Access header or dev impersonation
 function getUserEmail(req: Request): string | null {
   const url = new URL(req.url);
@@ -290,6 +307,45 @@ function addDays(date: string, days: number): string {
   return result.toISOString().split('T')[0];
 }
 
+function subtractDays(date: string, days: number): string {
+  return addDays(date, -days);
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function endOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+}
+
+function shiftUtcMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function getFullMonthWindow(referenceDate: string, monthCount: number) {
+  const reference = parseDateString(referenceDate);
+  const currentMonthStart = startOfMonth(reference);
+  const windowStart = shiftUtcMonths(currentMonthStart, -monthCount);
+  const windowEnd = endOfMonth(shiftUtcMonths(currentMonthStart, -1));
+
+  return {
+    start: formatDateString(windowStart),
+    end: formatDateString(windowEnd),
+  };
+}
+
+function getRollingWindow(referenceDate: string, days: number) {
+  return {
+    start: subtractDays(referenceDate, days - 1),
+    end: referenceDate,
+  };
+}
+
+function calculateBradfordScore(occurrences: number, totalDays: number) {
+  return Math.round(occurrences * occurrences * totalDays);
+}
+
 function calculateAppraisalDueDates(
   cycleEndDate: string,
   settings: { self_review_deadline_days: number; manager_review_deadline_days: number }
@@ -322,6 +378,125 @@ async function getLeaveRequestById(env: Env, requestId: number) {
   }
 
   return applyCalculatedDays(env, request);
+}
+
+async function getEmployeeById(env: Env, employeeId: number) {
+  return env.hr_dashboard_db.prepare(`
+    SELECT id, email, full_name, manager_email, onedrive_folder_url
+    FROM employees
+    WHERE id = ?
+  `).bind(employeeId).first() as Promise<any>;
+}
+
+async function getSicknessHistoryForEmployee(env: Env, employeeId: number) {
+  const history = await env.hr_dashboard_db.prepare(`
+    SELECT
+      lr.id,
+      lr.employee_id,
+      lr.start_date,
+      lr.end_date,
+      lr.days_requested,
+      lr.status,
+      lr.reason,
+      lr.manager_notes,
+      lr.start_half_day,
+      lr.end_half_day,
+      lr.created_at,
+      lr.updated_at,
+      rtw.id AS rtw_form_id,
+      rtw.form_completed_date,
+      rtw.return_to_work_date,
+      rtw.policy_bradford_score,
+      rtw.saved_document_name,
+      rtw.saved_document_url
+    FROM leave_requests lr
+    LEFT JOIN return_to_work_forms rtw ON rtw.leave_request_id = lr.id
+    WHERE lr.employee_id = ?
+      AND lr.leave_type = 'sick'
+      AND lr.deleted_at IS NULL
+      AND lr.status != 'cancelled'
+      AND lr.status != 'declined'
+    ORDER BY lr.start_date DESC, lr.created_at DESC
+  `).bind(employeeId).all();
+
+  return applyCalculatedDaysToRequests(env, history.results as any[]);
+}
+
+function summarizeAbsenceWindow(
+  requests: Array<{ start_date: string; days_requested: number }>,
+  rangeStart: string,
+  rangeEnd: string
+) {
+  const included = requests.filter((request) =>
+    request.start_date >= rangeStart && request.start_date <= rangeEnd
+  );
+
+  const occurrences = included.length;
+  const totalDays = Number(included.reduce((sum, request) => sum + Number(request.days_requested || 0), 0).toFixed(2));
+
+  return {
+    range_start: rangeStart,
+    range_end: rangeEnd,
+    occurrences,
+    total_days: totalDays,
+    bradford_score: calculateBradfordScore(occurrences, totalDays),
+  };
+}
+
+async function buildAbsenceMetrics(env: Env, employeeId: number, referenceDate: string) {
+  const history = await getSicknessHistoryForEmployee(env, employeeId);
+  const qualifyingHistory = history.filter((request: any) => request.start_date <= referenceDate);
+
+  const last3Months = getFullMonthWindow(referenceDate, 3);
+  const last6Months = getFullMonthWindow(referenceDate, 6);
+  const last9Months = getFullMonthWindow(referenceDate, 9);
+  const last52Weeks = getRollingWindow(referenceDate, 364);
+
+  return {
+    last_3_months: summarizeAbsenceWindow(qualifyingHistory, last3Months.start, last3Months.end),
+    last_6_months: summarizeAbsenceWindow(qualifyingHistory, last6Months.start, last6Months.end),
+    last_9_months: summarizeAbsenceWindow(qualifyingHistory, last9Months.start, last9Months.end),
+    last_52_weeks: summarizeAbsenceWindow(qualifyingHistory, last52Weeks.start, last52Weeks.end),
+  };
+}
+
+async function getAbsenceAdminData(env: Env) {
+  const employees = await env.hr_dashboard_db.prepare(`
+    SELECT id, email, full_name, manager_email, onedrive_folder_url
+    FROM employees
+    ORDER BY full_name ASC
+  `).all();
+
+  const employeeResults = await Promise.all((employees.results as any[]).map(async (employee) => {
+    const absences = await getSicknessHistoryForEmployee(env, employee.id);
+    const today = formatDateString(new Date());
+    const metrics = await buildAbsenceMetrics(env, employee.id, today);
+    const totalDays = Number(absences.reduce((sum, absence: any) => sum + Number(absence.days_requested || 0), 0).toFixed(2));
+
+    return {
+      ...employee,
+      absence_summary: {
+        total_days: totalDays,
+        total_occurrences: absences.length,
+        policy_bradford_score: metrics.last_52_weeks.bradford_score,
+        last_3_months: metrics.last_3_months,
+        last_6_months: metrics.last_6_months,
+        last_9_months: metrics.last_9_months,
+        last_52_weeks: metrics.last_52_weeks,
+      },
+      absences,
+    };
+  }));
+
+  return employeeResults.filter((employee) => employee.absences.length > 0);
+}
+
+async function getReturnToWorkFormByLeaveRequestId(env: Env, leaveRequestId: number) {
+  return env.hr_dashboard_db.prepare(`
+    SELECT *
+    FROM return_to_work_forms
+    WHERE leave_request_id = ?
+  `).bind(leaveRequestId).first() as Promise<any>;
 }
 
 async function getAppraisalSettings(env: Env) {
@@ -1211,6 +1386,177 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
       const normalizedRequests = await applyCalculatedDaysToRequests(env, requests.results as any[]);
 
       return new Response(JSON.stringify(normalizedRequests), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/absences' && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const absenceData = await getAbsenceAdminData(env);
+      return new Response(JSON.stringify(absenceData), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path.match(/^\/api\/admin\/return-to-work\/\d+$/) && method === 'GET') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const match = path.match(/^\/api\/admin\/return-to-work\/(\d+)$/);
+      const leaveRequestId = Number(match?.[1]);
+      const absence = await getLeaveRequestById(env, leaveRequestId);
+
+      if (!absence || absence.leave_type !== 'sick' || absence.status === 'cancelled' || absence.status === 'declined') {
+        return new Response(JSON.stringify({ error: 'Sickness absence not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const employee = await getEmployeeById(env, absence.employee_id);
+      const metrics = await buildAbsenceMetrics(env, absence.employee_id, absence.end_date);
+      const existing = await getReturnToWorkFormByLeaveRequestId(env, leaveRequestId);
+
+      return new Response(JSON.stringify({
+        leave_request_id: absence.id,
+        employee_id: absence.employee_id,
+        employee_name: employee?.full_name || '',
+        employee_email: employee?.email || '',
+        manager_email: employee?.manager_email || '',
+        onedrive_folder_url: employee?.onedrive_folder_url || '',
+        absence: {
+          id: absence.id,
+          start_date: absence.start_date,
+          end_date: absence.end_date,
+          days_requested: absence.days_requested,
+          reason: absence.reason,
+          manager_notes: absence.manager_notes,
+          status: absence.status,
+        },
+        metrics,
+        form: existing || null,
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+      });
+    }
+
+    if (path === '/api/admin/return-to-work' && method === 'POST') {
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const body = await req.json();
+      const validated = ReturnToWorkFormSchema.parse(body);
+      const absence = await getLeaveRequestById(env, validated.leave_request_id);
+
+      if (!absence || absence.leave_type !== 'sick' || absence.status === 'cancelled' || absence.status === 'declined') {
+        return new Response(JSON.stringify({ error: 'Sickness absence not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+        });
+      }
+
+      const metrics = await buildAbsenceMetrics(env, absence.employee_id, absence.end_date);
+
+      await env.hr_dashboard_db.prepare(`
+        INSERT INTO return_to_work_forms (
+          employee_id,
+          leave_request_id,
+          manager_name,
+          manager_comments,
+          employee_comments,
+          support_actions,
+          wellbeing_notes,
+          manager_signature,
+          employee_signature,
+          manager_signed_at,
+          employee_signed_at,
+          form_completed_date,
+          return_to_work_date,
+          absence_days,
+          occurrences_last_3_months,
+          bradford_last_3_months,
+          occurrences_last_6_months,
+          bradford_last_6_months,
+          occurrences_last_9_months,
+          bradford_last_9_months,
+          occurrences_last_52_weeks,
+          bradford_last_52_weeks,
+          policy_bradford_score,
+          saved_document_name,
+          saved_document_url,
+          created_by_email,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(leave_request_id) DO UPDATE SET
+          manager_name = excluded.manager_name,
+          manager_comments = excluded.manager_comments,
+          employee_comments = excluded.employee_comments,
+          support_actions = excluded.support_actions,
+          wellbeing_notes = excluded.wellbeing_notes,
+          manager_signature = excluded.manager_signature,
+          employee_signature = excluded.employee_signature,
+          manager_signed_at = excluded.manager_signed_at,
+          employee_signed_at = excluded.employee_signed_at,
+          form_completed_date = excluded.form_completed_date,
+          return_to_work_date = excluded.return_to_work_date,
+          absence_days = excluded.absence_days,
+          occurrences_last_3_months = excluded.occurrences_last_3_months,
+          bradford_last_3_months = excluded.bradford_last_3_months,
+          occurrences_last_6_months = excluded.occurrences_last_6_months,
+          bradford_last_6_months = excluded.bradford_last_6_months,
+          occurrences_last_9_months = excluded.occurrences_last_9_months,
+          bradford_last_9_months = excluded.bradford_last_9_months,
+          occurrences_last_52_weeks = excluded.occurrences_last_52_weeks,
+          bradford_last_52_weeks = excluded.bradford_last_52_weeks,
+          policy_bradford_score = excluded.policy_bradford_score,
+          saved_document_name = excluded.saved_document_name,
+          saved_document_url = excluded.saved_document_url,
+          updated_at = datetime('now')
+      `).bind(
+        absence.employee_id,
+        validated.leave_request_id,
+        normalizeText(validated.manager_name),
+        normalizeText(validated.manager_comments),
+        normalizeText(validated.employee_comments),
+        normalizeText(validated.support_actions),
+        normalizeText(validated.wellbeing_notes),
+        normalizeText(validated.manager_signature),
+        normalizeText(validated.employee_signature),
+        validated.manager_signed_at || null,
+        validated.employee_signed_at || null,
+        validated.form_completed_date,
+        validated.return_to_work_date,
+        absence.days_requested,
+        metrics.last_3_months.occurrences,
+        metrics.last_3_months.bradford_score,
+        metrics.last_6_months.occurrences,
+        metrics.last_6_months.bradford_score,
+        metrics.last_9_months.occurrences,
+        metrics.last_9_months.bradford_score,
+        metrics.last_52_weeks.occurrences,
+        metrics.last_52_weeks.bradford_score,
+        metrics.last_52_weeks.bradford_score,
+        normalizeText(validated.saved_document_name),
+        normalizeText(validated.saved_document_url),
+        userEmail
+      ).run();
+
+      const saved = await getReturnToWorkFormByLeaveRequestId(env, validated.leave_request_id);
+      return new Response(JSON.stringify(saved), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       });
     }

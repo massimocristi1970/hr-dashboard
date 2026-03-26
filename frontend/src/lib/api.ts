@@ -137,6 +137,32 @@ export const api = {
   
   getAllRequests: () => fetchAPI('/api/admin/all-requests'),
 
+  getAbsenceAdminData: () => fetchOptional('/api/admin/absences', []),
+
+  getReturnToWorkDetail: (leaveRequestId: number) =>
+    fetchAPI(`/api/admin/return-to-work/${leaveRequestId}`),
+
+  saveReturnToWorkForm: (data: {
+    leave_request_id: number;
+    manager_name?: string;
+    manager_comments?: string;
+    employee_comments?: string;
+    support_actions?: string;
+    wellbeing_notes?: string;
+    manager_signature?: string;
+    employee_signature?: string;
+    manager_signed_at?: string;
+    employee_signed_at?: string;
+    form_completed_date: string;
+    return_to_work_date: string;
+    saved_document_name?: string;
+    saved_document_url?: string;
+  }) =>
+    fetchAPI('/api/admin/return-to-work', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   createAdminLeave: (data: {
     employee_id: number;
     start_date: string;

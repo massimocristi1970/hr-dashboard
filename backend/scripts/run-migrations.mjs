@@ -182,6 +182,10 @@ function bootstrapExistingSchema(appliedMigrations) {
         leaveRequestColumns.has('deleted_at') &&
         leaveRequestColumns.has('deleted_by_email'),
     },
+    {
+      file: '0009_absence_return_to_work.sql',
+      applied: tableNames.has('return_to_work_forms'),
+    },
   ];
 
   for (const check of bootstrapChecks) {

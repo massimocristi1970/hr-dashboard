@@ -1,0 +1,36 @@
+CREATE TABLE IF NOT EXISTS return_to_work_forms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL,
+  leave_request_id INTEGER NOT NULL UNIQUE,
+  manager_name TEXT,
+  manager_comments TEXT,
+  employee_comments TEXT,
+  support_actions TEXT,
+  wellbeing_notes TEXT,
+  manager_signature TEXT,
+  employee_signature TEXT,
+  manager_signed_at TEXT,
+  employee_signed_at TEXT,
+  form_completed_date TEXT NOT NULL,
+  return_to_work_date TEXT NOT NULL,
+  absence_days REAL NOT NULL DEFAULT 0,
+  occurrences_last_3_months INTEGER NOT NULL DEFAULT 0,
+  bradford_last_3_months INTEGER NOT NULL DEFAULT 0,
+  occurrences_last_6_months INTEGER NOT NULL DEFAULT 0,
+  bradford_last_6_months INTEGER NOT NULL DEFAULT 0,
+  occurrences_last_9_months INTEGER NOT NULL DEFAULT 0,
+  bradford_last_9_months INTEGER NOT NULL DEFAULT 0,
+  occurrences_last_52_weeks INTEGER NOT NULL DEFAULT 0,
+  bradford_last_52_weeks INTEGER NOT NULL DEFAULT 0,
+  policy_bradford_score INTEGER NOT NULL DEFAULT 0,
+  saved_document_name TEXT,
+  saved_document_url TEXT,
+  created_by_email TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id),
+  FOREIGN KEY (leave_request_id) REFERENCES leave_requests(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_rtw_forms_employee ON return_to_work_forms(employee_id);
+CREATE INDEX IF NOT EXISTS idx_rtw_forms_leave_request ON return_to_work_forms(leave_request_id);
