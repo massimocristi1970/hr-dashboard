@@ -25,6 +25,13 @@ export interface ManagerReferencePriority {
   reason: string;
 }
 
+export interface ManagerReferenceSource {
+  id: string;
+  label: string;
+  provider: 'Acas' | 'GOV.UK' | 'Legislation.gov.uk' | 'ICO';
+  url: string;
+}
+
 export const managerReferenceSections: ManagerReferenceSection[] = [
   {
     id: 'starting-employment',
@@ -120,6 +127,136 @@ export const managerReferenceBuildOrder = [
     items: ['FAQ', 'Tags', 'Search'],
   },
 ];
+
+export const managerReferenceSourceLibrary: Record<string, ManagerReferenceSource> = {
+  acasCodeDisciplineGrievance: {
+    id: 'acasCodeDisciplineGrievance',
+    label: 'Acas Code of Practice on disciplinary and grievance procedures',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/acas-code-of-practice-on-disciplinary-and-grievance-procedures',
+  },
+  acasDisciplinaryProcedure: {
+    id: 'acasDisciplinaryProcedure',
+    label: 'Acas disciplinary procedure guidance',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/disciplinary-procedure-step-by-step',
+  },
+  acasGrievanceProcedure: {
+    id: 'acasGrievanceProcedure',
+    label: 'Acas formal grievance procedure guidance',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/grievance-procedure-step-by-step',
+  },
+  acasFlexibleWorking: {
+    id: 'acasFlexibleWorking',
+    label: 'Acas flexible working guidance',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/flexible-working',
+  },
+  acasFlexibleWorkingCode: {
+    id: 'acasFlexibleWorkingCode',
+    label: 'Acas Code of Practice on requests for flexible working',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/acas-code-of-practice-on-flexible-working-requests',
+  },
+  acasReasonableAdjustments: {
+    id: 'acasReasonableAdjustments',
+    label: 'Acas reasonable adjustments at work guidance',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/reasonable-adjustments',
+  },
+  acasRedundancy: {
+    id: 'acasRedundancy',
+    label: 'Acas redundancy guidance',
+    provider: 'Acas',
+    url: 'https://www.acas.org.uk/redundancy',
+  },
+  govRightToWorkGuide: {
+    id: 'govRightToWorkGuide',
+    label: "Employer's guide to right to work checks",
+    provider: 'GOV.UK',
+    url: 'https://www.gov.uk/government/publications/right-to-work-checks-employers-guide',
+  },
+  govRightToWorkCheckTool: {
+    id: 'govRightToWorkCheckTool',
+    label: "Checking a job applicant's right to work",
+    provider: 'GOV.UK',
+    url: 'https://www.gov.uk/check-job-applicant-right-to-work',
+  },
+  govMaternityEmployerGuide: {
+    id: 'govMaternityEmployerGuide',
+    label: 'Statutory Maternity Pay and Leave: employer guide',
+    provider: 'GOV.UK',
+    url: 'https://www.gov.uk/employers-maternity-pay-leave',
+  },
+  govNeonatalEmployerGuide: {
+    id: 'govNeonatalEmployerGuide',
+    label: 'Statutory Neonatal Care Pay and Leave: employer guide',
+    provider: 'GOV.UK',
+    url: 'https://www.gov.uk/employers-neonatal-care-pay-leave',
+  },
+  govRedundancyRights: {
+    id: 'govRedundancyRights',
+    label: 'Redundancy: your rights',
+    provider: 'GOV.UK',
+    url: 'https://www.gov.uk/redundancy-your-rights',
+  },
+  legislationEmploymentRightsAct: {
+    id: 'legislationEmploymentRightsAct',
+    label: 'Employment Rights Act 1996',
+    provider: 'Legislation.gov.uk',
+    url: 'https://www.legislation.gov.uk/ukpga/1996/18/contents',
+  },
+  legislationEqualityAct: {
+    id: 'legislationEqualityAct',
+    label: 'Equality Act 2010',
+    provider: 'Legislation.gov.uk',
+    url: 'https://www.legislation.gov.uk/ukpga/2010/15/contents',
+  },
+  icoEmploymentRecords: {
+    id: 'icoEmploymentRecords',
+    label: 'ICO employment records guidance',
+    provider: 'ICO',
+    url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/employment/employment-practices-and-data-protection-keeping-employment-records/',
+  },
+  icoWorkersHealth: {
+    id: 'icoWorkersHealth',
+    label: 'ICO workers’ health information guidance',
+    provider: 'ICO',
+    url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/employment/information-about-workers-health/',
+  },
+  icoRecruitmentSelection: {
+    id: 'icoRecruitmentSelection',
+    label: 'ICO recruitment and selection guidance',
+    provider: 'ICO',
+    url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/employment/recruitment-and-selection/',
+  },
+};
+
+export const managerReferenceGuideSources: Record<string, string[]> = {
+  'written-statement-of-employment-particulars': ['legislationEmploymentRightsAct'],
+  'probation-periods-and-extensions': ['acasDisciplinaryProcedure', 'legislationEmploymentRightsAct'],
+  'right-to-work-checks': ['govRightToWorkGuide', 'govRightToWorkCheckTool'],
+  'references-and-recruitment-checks': ['icoRecruitmentSelection', 'govRightToWorkGuide'],
+  'sickness-absence-and-fit-notes': ['icoWorkersHealth', 'acasReasonableAdjustments'],
+  'holiday-entitlement-and-carry-over': ['legislationEmploymentRightsAct'],
+  'flexible-working-requests': ['acasFlexibleWorking', 'acasFlexibleWorkingCode', 'legislationEmploymentRightsAct'],
+  'working-from-home-and-remote-management': ['acasFlexibleWorking', 'icoEmploymentRecords'],
+  'grievance-process': ['acasCodeDisciplineGrievance', 'acasGrievanceProcedure'],
+  'disciplinary-process': ['acasCodeDisciplineGrievance', 'acasDisciplinaryProcedure'],
+  'capability-and-performance-management': ['acasDisciplinaryProcedure', 'acasCodeDisciplineGrievance'],
+  'equality-discrimination-and-reasonable-adjustments': ['acasReasonableAdjustments', 'legislationEqualityAct'],
+  'sexual-harassment-prevention': ['legislationEqualityAct', 'acasGrievanceProcedure'],
+  'family-friendly-rights': ['govMaternityEmployerGuide', 'legislationEmploymentRightsAct'],
+  'neonatal-care-leave': ['govNeonatalEmployerGuide', 'legislationEmploymentRightsAct'],
+  'data-protection-in-hr': ['icoEmploymentRecords', 'icoWorkersHealth'],
+  'monitoring-at-work': ['icoWorkersHealth', 'icoEmploymentRecords'],
+  'whistleblowing': ['legislationEmploymentRightsAct'],
+  'training-repayment-agreements': ['legislationEmploymentRightsAct'],
+  'notice-and-exit-steps': ['legislationEmploymentRightsAct'],
+  'redundancy-basics': ['acasRedundancy', 'govRedundancyRights', 'legislationEmploymentRightsAct'],
+  'references-after-employment': ['icoEmploymentRecords', 'acasDisciplinaryProcedure'],
+};
 
 export const managerReferenceGuides: ManagerReferenceGuide[] = [
   {

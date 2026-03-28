@@ -638,6 +638,35 @@
   color: var(--color-muted-strong);
 }
 
+.reference-source-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-source-link {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 93, 140, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.reference-source-link:hover {
+  background: rgba(232, 242, 251, 0.96);
+  border-color: rgba(31, 93, 140, 0.24);
+}
+
+.reference-source-link__provider {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
 .legend-grid {
   display: flex;
   flex-wrap: wrap;

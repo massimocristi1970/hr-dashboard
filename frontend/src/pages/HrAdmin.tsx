@@ -4,8 +4,10 @@ import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
 import {
   managerReferenceBuildOrder,
   managerReferenceGuides,
+  managerReferenceGuideSources,
   managerReferencePriorities,
   managerReferenceSections,
+  managerReferenceSourceLibrary,
 } from '../lib/managerReference';
 
 interface LeaveSummary {
@@ -1052,12 +1054,21 @@ export default function HrAdmin() {
       ...guide.managerShouldNotDo,
       ...guide.whenToEscalate,
       ...guide.relatedForms,
+      ...(managerReferenceGuideSources[guide.id] || []).flatMap((sourceId) => {
+        const source = managerReferenceSourceLibrary[sourceId];
+        return source ? [source.label, source.provider] : [];
+      }),
     ]);
   });
   const selectedReferenceGuide =
     filteredReferenceGuides.find((guide) => guide.id === selectedReferenceId) ||
     filteredReferenceGuides[0] ||
     null;
+  const selectedReferenceSources = selectedReferenceGuide
+    ? (managerReferenceGuideSources[selectedReferenceGuide.id] || [])
+        .map((sourceId) => managerReferenceSourceLibrary[sourceId])
+        .filter(Boolean)
+    : [];
 
   return (
     <div className="page-frame">
@@ -2269,6 +2280,9 @@ export default function HrAdmin() {
                       </div>
                       <span className="status-badge status-neutral">Last reviewed {selectedReferenceGuide.lastReviewed}</span>
                     </div>
+                    <div className="alert alert-info" style={{ marginBottom: 0 }}>
+                      Internal manager prompt guide with linked official sources for checking the current ACAS, GOV.UK, legislation, and ICO position before making higher-risk decisions.
+                    </div>
                     <div className="surface-panel stack" style={{ padding: '14px' }}>
                       <span className="summary-label">When to use it</span>
                       <p style={{ margin: 0 }}>{selectedReferenceGuide.whenToUse}</p>
@@ -2319,6 +2333,28 @@ export default function HrAdmin() {
                         ))}
                       </div>
                     </div>
+                    {selectedReferenceSources.length > 0 && (
+                      <div className="surface-panel stack" style={{ padding: '16px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>Official sources</h4>
+                        <p className="muted-text" style={{ margin: 0 }}>
+                          Use these links to validate the live guidance or check the underlying legal source.
+                        </p>
+                        <div className="reference-source-list">
+                          {selectedReferenceSources.map((source) => (
+                            <a
+                              key={source.id}
+                              className="reference-source-link"
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <span className="reference-source-link__provider">{source.provider}</span>
+                              <strong>{source.label}</strong>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="reference-columns">
