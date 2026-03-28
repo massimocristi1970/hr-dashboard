@@ -401,6 +401,40 @@ function buildReturnToWorkHtml(detail: ReturnToWorkDetail, form: ReturnToWorkFor
 </html>`;
 }
 
+function normalizeReferenceSearchText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function getReferenceSearchIndex(values: string[]) {
+  return normalizeReferenceSearchText(values.join(' '));
+}
+
+function getReferenceMatchLabel(
+  guide: typeof managerReferenceGuides[number],
+  tokens: string[]
+) {
+  if (tokens.length === 0) {
+    return '';
+  }
+
+  const matchGroups = [
+    { label: 'title', values: [guide.title] },
+    { label: 'section', values: [guide.sectionLabel] },
+    { label: 'tags', values: guide.tags },
+    { label: 'when to use', values: [guide.whenToUse] },
+    { label: 'legal points', values: guide.keyLegalPoints },
+    { label: 'manager actions', values: [...guide.managerShouldDo, ...guide.managerShouldNotDo] },
+    { label: 'escalation', values: guide.whenToEscalate },
+    { label: 'forms', values: guide.relatedForms },
+  ];
+
+  const matchingGroup = matchGroups.find((group) =>
+    tokens.every((token) => getReferenceSearchIndex(group.values).includes(token))
+  );
+
+  return matchingGroup ? `Matched in ${matchingGroup.label}` : 'Matched in guide content';
+}
+
 export default function HrAdmin() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<AdminLeaveRequest[]>([]);
@@ -925,17 +959,18 @@ export default function HrAdmin() {
   const selectedAbsenceEmployee = absenceAdmin.find((employee) => employee.id === selectedAbsenceEmployeeId) || absenceAdmin[0] || null;
   const totalAbsenceOccurrences = absenceAdmin.reduce((sum, employee) => sum + employee.absences.length, 0);
   const totalAbsenceDays = Number(absenceAdmin.reduce((sum, employee) => sum + employee.absence_summary.total_days, 0).toFixed(2));
-  const referenceSearchTerm = referenceSearch.trim().toLowerCase();
+  const referenceSearchTerm = normalizeReferenceSearchText(referenceSearch);
+  const referenceSearchTokens = referenceSearchTerm ? referenceSearchTerm.split(' ').filter(Boolean) : [];
   const filteredReferenceGuides = managerReferenceGuides.filter((guide) => {
     if (referenceSectionFilter !== 'all' && guide.section !== referenceSectionFilter) {
       return false;
     }
 
-    if (!referenceSearchTerm) {
+    if (referenceSearchTokens.length === 0) {
       return true;
     }
 
-    const searchIndex = [
+    const searchIndex = getReferenceSearchIndex([
       guide.title,
       guide.sectionLabel,
       guide.whenToUse,
@@ -946,11 +981,9 @@ export default function HrAdmin() {
       ...guide.managerShouldNotDo,
       ...guide.whenToEscalate,
       ...guide.relatedForms,
-    ]
-      .join(' ')
-      .toLowerCase();
+    ]);
 
-    return searchIndex.includes(referenceSearchTerm);
+    return referenceSearchTokens.every((token) => searchIndex.includes(token));
   });
   const selectedReferenceGuide =
     filteredReferenceGuides.find((guide) => guide.id === selectedReferenceId) ||
@@ -2071,6 +2104,9 @@ export default function HrAdmin() {
                 value={referenceSearch}
                 onChange={(e) => setReferenceSearch(e.target.value)}
               />
+              <small className="form-help">
+                Search checks titles, section names, tags, legal points, manager actions, escalation notes, and related forms.
+              </small>
             </div>
             <div className="form-group">
               <label htmlFor="manager-reference-section">Filter by section</label>
@@ -2086,8 +2122,34 @@ export default function HrAdmin() {
                   </option>
                 ))}
               </select>
+              <small className="form-help">
+                Combine section filtering with search if you want to narrow a long topic quickly.
+              </small>
             </div>
           </div>
+
+          {(referenceSearchTokens.length > 0 || referenceSectionFilter !== 'all') && (
+            <div className="inline-actions" style={{ marginTop: '-4px' }}>
+              {referenceSearchTokens.length > 0 && (
+                <span className="status-badge status-pending">Searching for "{referenceSearch.trim()}"</span>
+              )}
+              {referenceSectionFilter !== 'all' && (
+                <span className="status-badge status-neutral">
+                  Section {managerReferenceSections.find((section) => section.id === referenceSectionFilter)?.label || referenceSectionFilter}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setReferenceSearch('');
+                  setReferenceSectionFilter('all');
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
 
           <div className="reference-layout">
             <div className="reference-list stack">
@@ -2111,6 +2173,9 @@ export default function HrAdmin() {
                     <span className="reference-card__section">{guide.sectionLabel}</span>
                     <strong>{guide.title}</strong>
                     <span className="reference-card__copy">{guide.whenToUse}</span>
+                    {referenceSearchTokens.length > 0 && (
+                      <span className="reference-card__match">{getReferenceMatchLabel(guide, referenceSearchTokens)}</span>
+                    )}
                     <div className="reference-tag-row">
                       {guide.tags.slice(0, 4).map((tag) => (
                         <span key={tag} className="status-badge status-neutral">

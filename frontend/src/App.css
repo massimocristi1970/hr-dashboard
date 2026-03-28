@@ -560,6 +560,12 @@
   box-shadow: none;
 }
 
+.reference-card strong {
+  color: #102133;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
 .reference-card:hover,
 .reference-card.is-selected {
   border-color: rgba(31, 93, 140, 0.28);
@@ -581,9 +587,15 @@
 }
 
 .reference-card__copy {
-  color: var(--color-muted-strong);
+  color: #23415d;
   font-size: 0.95rem;
   line-height: 1.45;
+}
+
+.reference-card__match {
+  color: #0e5ea8;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .reference-tag-row {
