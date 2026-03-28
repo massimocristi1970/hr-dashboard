@@ -32,6 +32,14 @@ export interface ManagerReferenceSource {
   url: string;
 }
 
+export interface ManagerReferenceEnhancement {
+  managerChecklist: string[];
+  commonScenarios: string[];
+  recordsToKeep: string[];
+  riskNotes: string[];
+  sourceSummary: string[];
+}
+
 export const managerReferenceSections: ManagerReferenceSection[] = [
   {
     id: 'starting-employment',
@@ -256,6 +264,434 @@ export const managerReferenceGuideSources: Record<string, string[]> = {
   'notice-and-exit-steps': ['legislationEmploymentRightsAct'],
   'redundancy-basics': ['acasRedundancy', 'govRedundancyRights', 'legislationEmploymentRightsAct'],
   'references-after-employment': ['icoEmploymentRecords', 'acasDisciplinaryProcedure'],
+};
+
+export const managerReferenceGuideEnhancements: Record<string, ManagerReferenceEnhancement> = {
+  'written-statement-of-employment-particulars': {
+    managerChecklist: [
+      'Confirm pay, hours, holiday, reporting line, place of work, and notice before the start date.',
+      'Check the offer, contract, and any onboarding emails all say the same thing.',
+      'Escalate any non-standard term before the employee starts relying on it.',
+    ],
+    commonScenarios: [
+      'A starter says the verbal offer included hybrid working that is missing from the contract.',
+      'A manager wants to change the hours after an offer has already been accepted.',
+    ],
+    recordsToKeep: ['Final offer wording', 'Issued contract or statement', 'Any agreed variation confirmed in writing'],
+    riskNotes: [
+      'Conflicting promises are hard to unwind once the employee has started.',
+      'Loose wording around hours or location can trigger early employee relations issues.',
+    ],
+    sourceSummary: [
+      'The Employment Rights Act sets the legal framework for written particulars and notice-related terms.',
+    ],
+  },
+  'probation-periods-and-extensions': {
+    managerChecklist: [
+      'Schedule check-ins early instead of waiting for the final week.',
+      'Set clear objectives, support actions, and a date for the final review.',
+      'If extending, confirm the reason, extension length, and success criteria in writing.',
+    ],
+    commonScenarios: [
+      'Performance concerns are real but the manager has not documented them during the first months.',
+      'Absence or disability-related issues are affecting the assessment and fairness needs checking.',
+    ],
+    recordsToKeep: ['Probation objectives', 'Review notes', 'Extension or confirmation letter'],
+    riskNotes: [
+      'Late surprises make even probation decisions feel unfair and badly managed.',
+      'Probation should not be used to sidestep discrimination, sickness, or whistleblowing concerns.',
+    ],
+    sourceSummary: [
+      'Acas guidance supports fair process and reasonable investigation where concerns are serious.',
+      'The Employment Rights Act remains relevant where notice, contractual rights, or dismissal issues arise.',
+    ],
+  },
+  'right-to-work-checks': {
+    managerChecklist: [
+      'Make sure the correct right to work check route is used before day one.',
+      'Check whether follow-up reminders are needed for time-limited permission.',
+      'Store evidence only through the approved HR process.',
+    ],
+    commonScenarios: [
+      'A candidate wants to start immediately but the Home Office share code is not yet available.',
+      'A visa expiry reminder is approaching and the line manager is unsure whether work can continue.',
+    ],
+    recordsToKeep: ['Check outcome', 'Date of check', 'Copy or reference to the verified evidence'],
+    riskNotes: [
+      'Inconsistent checking can create both compliance risk and discrimination risk.',
+      'Letting someone start before the check is complete can remove the statutory excuse.',
+    ],
+    sourceSummary: [
+      'GOV.UK guidance explains the permitted check methods and when follow-up checks are needed.',
+    ],
+  },
+  'references-and-recruitment-checks': {
+    managerChecklist: [
+      'Use the role-based recruitment checklist instead of ad hoc checks.',
+      'Check concerns with HR before changing an offer or making adverse assumptions.',
+      'Keep any reference or screening result tightly controlled.',
+    ],
+    commonScenarios: [
+      'A reference contains ambiguous criticism and the hiring manager wants to withdraw the offer immediately.',
+      'A manager wants an extra check for one candidate because they seem higher risk.',
+    ],
+    recordsToKeep: ['Recruitment approval trail', 'Reference outcome notes', 'Offer decision rationale'],
+    riskNotes: [
+      'Unstructured checks can drift into unfair or discriminatory decision-making.',
+      'Recruitment data often contains sensitive information and should not be circulated casually.',
+    ],
+    sourceSummary: [
+      'ICO guidance helps with fair collection and use of applicant information during recruitment.',
+    ],
+  },
+  'sickness-absence-and-fit-notes': {
+    managerChecklist: [
+      'Record the absence, expected contact pattern, and any fit note recommendation promptly.',
+      'Hold a return to work conversation after appropriate absences.',
+      'Consider adjustments or occupational health if the pattern becomes longer-term or repeated.',
+    ],
+    commonScenarios: [
+      'An employee submits a fit note saying they may be fit for work with temporary changes.',
+      'There are repeated Monday absences but there may also be stress or disability factors.',
+    ],
+    recordsToKeep: ['Absence record', 'Fit note details', 'Return to work notes', 'Support actions agreed'],
+    riskNotes: [
+      'Treating every absence as a conduct issue can quickly become unsafe and unfair.',
+      'Health information is sensitive and should be stored and shared carefully.',
+    ],
+    sourceSummary: [
+      'ICO guidance is especially helpful where managers hold or discuss health information.',
+      'Acas adjustment guidance is useful when attendance concerns overlap with disability support.',
+    ],
+  },
+  'holiday-entitlement-and-carry-over': {
+    managerChecklist: [
+      'Check the recorded entitlement before answering any year-end question.',
+      'Review whether sickness or family leave affects carry-over rights.',
+      'Make sure employees have had a real opportunity to take holiday.',
+    ],
+    commonScenarios: [
+      'An employee says they could not take leave because of a long sickness absence.',
+      'A manager wants to refuse carry-over based on team custom rather than policy.',
+    ],
+    recordsToKeep: ['Leave balance view', 'Carry-over decision note', 'Communications about year-end leave'],
+    riskNotes: [
+      'Carry-over decisions can become inconsistent if local manager practice replaces policy.',
+      'Holiday disputes often arise when team capacity planning has been left too late.',
+    ],
+    sourceSummary: [
+      'The Employment Rights Act and related holiday rights framework are the legal starting point for entitlement decisions.',
+    ],
+  },
+  'flexible-working-requests': {
+    managerChecklist: [
+      'Meet the employee, understand the request, and explore workable alternatives.',
+      'Use evidence on coverage, workload, customer demand, and fairness before deciding.',
+      'Document the decision, reasons, and any trial period clearly.',
+    ],
+    commonScenarios: [
+      'An employee asks to compress hours because of caring responsibilities.',
+      'Several team members ask for the same remote-working pattern and coverage becomes the issue.',
+    ],
+    recordsToKeep: ['Request form', 'Meeting notes', 'Operational assessment', 'Decision and review note'],
+    riskNotes: [
+      'Quick refusals based on manager preference create avoidable risk.',
+      'Flexible working requests often overlap with discrimination, disability, or family-related issues.',
+    ],
+    sourceSummary: [
+      'Acas practical guidance and the Acas Code help managers structure a reasonable response process.',
+    ],
+  },
+  'working-from-home-and-remote-management': {
+    managerChecklist: [
+      'Set expectations for outputs, communication, data handling, and availability.',
+      'Check in regularly on wellbeing, equipment, and blockers rather than relying on visibility.',
+      'Review whether the arrangement still works for the role and team.',
+    ],
+    commonScenarios: [
+      'A manager wants to monitor online status because they feel unsure whether work is happening.',
+      'A remote arrangement is working for performance but team coverage rules are unclear.',
+    ],
+    recordsToKeep: ['Remote working agreement', 'Review notes', 'Any agreed equipment or support actions'],
+    riskNotes: [
+      'Poorly explained monitoring can damage trust and create privacy issues.',
+      'Remote work concerns are often really performance, support, or communication issues in disguise.',
+    ],
+    sourceSummary: [
+      'Acas guidance helps with flexible arrangements and fair conversations.',
+      'ICO guidance matters where records, monitoring, or device use become part of management decisions.',
+    ],
+  },
+  'grievance-process': {
+    managerChecklist: [
+      'Acknowledge the grievance and decide who can handle it impartially.',
+      'Separate investigation, hearing, and outcome stages as far as possible.',
+      'Confirm the outcome and any next steps in writing.',
+    ],
+    commonScenarios: [
+      'An employee raises bullying concerns but also says they do not want a formal process yet.',
+      'The grievance is against the employee’s own line manager, so another manager or HR must lead.',
+    ],
+    recordsToKeep: ['Grievance statement', 'Meeting notes', 'Evidence reviewed', 'Outcome and appeal record'],
+    riskNotes: [
+      'Trying to resolve a serious grievance informally without structure can make things worse.',
+      'Retaliation or poor confidentiality handling can become a bigger issue than the original complaint.',
+    ],
+    sourceSummary: [
+      'The Acas Code and Acas grievance guidance set the benchmark for a fair and documented process.',
+    ],
+  },
+  'disciplinary-process': {
+    managerChecklist: [
+      'Clarify the allegation and whether an investigation is needed before any hearing.',
+      'Keep the investigator and decision-maker separate where possible.',
+      'Explain the allegation, evidence, possible outcomes, and right to be accompanied.',
+    ],
+    commonScenarios: [
+      'A conduct issue looks serious, but key facts are still disputed.',
+      'A manager wants to move straight to a warning without a full investigation.',
+    ],
+    recordsToKeep: ['Investigation notes', 'Invite letter', 'Hearing notes', 'Outcome and appeal record'],
+    riskNotes: [
+      'Predetermined outcomes undermine fairness quickly.',
+      'Performance, sickness, and misconduct issues should not be mixed together casually.',
+    ],
+    sourceSummary: [
+      'The Acas Code and disciplinary guidance are the main practical source for a fair employer process.',
+    ],
+  },
+  'capability-and-performance-management': {
+    managerChecklist: [
+      'State the gap between expected and actual performance with examples.',
+      'Agree support, timescales, and review points that are realistic for the role.',
+      'Check whether health, training, workload, or unclear priorities are contributing factors.',
+    ],
+    commonScenarios: [
+      'A high performer in one area is missing deadlines elsewhere and expectations are inconsistent.',
+      'A capability process may be needed but the employee has raised stress or health concerns.',
+    ],
+    recordsToKeep: ['Performance objectives', 'Review notes', 'Support or training actions', 'Formal outcome letters'],
+    riskNotes: [
+      'Vague labels like poor attitude do not give the employee a fair chance to improve.',
+      'Performance processes often become risky when the root issue is actually health or role design.',
+    ],
+    sourceSummary: [
+      'Acas process guidance helps where capability concerns move into a formal framework.',
+    ],
+  },
+  'equality-discrimination-and-reasonable-adjustments': {
+    managerChecklist: [
+      'Pause before applying a policy and ask whether it creates a barrier in this case.',
+      'Discuss possible adjustments practically and keep the conversation collaborative.',
+      'Review whether trial adjustments are working and record the outcome.',
+    ],
+    commonScenarios: [
+      'An employee needs changes to hours or equipment because of a health condition.',
+      'A neutral team rule is affecting one employee more heavily because of disability or religion.',
+    ],
+    recordsToKeep: ['Adjustment discussion notes', 'Advice received', 'Decision rationale', 'Review dates'],
+    riskNotes: [
+      'Treating everyone identically is not always legally safe where adjustments are needed.',
+      'Managers often create risk by delaying difficult conversations instead of exploring workable changes.',
+    ],
+    sourceSummary: [
+      'Acas guidance is useful for manager conversations and adjustment handling.',
+      'The Equality Act is the legal anchor for discrimination and reasonable adjustment duties.',
+    ],
+  },
+  'sexual-harassment-prevention': {
+    managerChecklist: [
+      'Act on concerning behaviour early and set clear team standards.',
+      'Listen carefully to reports and route them to HR or the formal process quickly.',
+      'Consider immediate protective steps if safety, intimidation, or retaliation is a concern.',
+    ],
+    commonScenarios: [
+      'A team member says a colleague has been sending inappropriate messages out of hours.',
+      'A manager witnesses behaviour that has not yet been formally reported.',
+    ],
+    recordsToKeep: ['Initial concern note', 'Protective actions taken', 'Investigation referral', 'Support measures'],
+    riskNotes: [
+      'Calling it banter or waiting for a formal complaint can materially increase harm and risk.',
+      'Third-party or client conduct still needs active management where work is affected.',
+    ],
+    sourceSummary: [
+      'The Equality Act is the core legal source.',
+      'Acas grievance guidance helps structure the employer response and reporting route.',
+    ],
+  },
+  'family-friendly-rights': {
+    managerChecklist: [
+      'Signpost the employee to the correct family leave route and involve HR early.',
+      'Plan cover, contact preferences, and return arrangements without pressure.',
+      'Check any overlap with pay, holiday, redundancy, or sickness issues.',
+    ],
+    commonScenarios: [
+      'A manager is asked about maternity or paternity timing but payroll confirmation is still needed.',
+      'An employee wants clarity on keep-in-touch arrangements before going on leave.',
+    ],
+    recordsToKeep: ['Leave notification', 'Cover plan', 'Contact agreement', 'Return planning notes'],
+    riskNotes: [
+      'Casual comments about commitment or progression can create serious detriment risk.',
+      'Family leave cases often cross into holiday, flexible working, or redundancy questions.',
+    ],
+    sourceSummary: [
+      'GOV.UK employer guides are the best practical source for statutory pay and process detail.',
+      'The Employment Rights Act remains the core legal framework behind many family-related protections.',
+    ],
+  },
+  'neonatal-care-leave': {
+    managerChecklist: [
+      'Treat the issue as urgent and route it through HR or payroll without delay.',
+      'Agree compassionate contact arrangements and immediate cover.',
+      'Check whether other family or sickness rights are also engaged.',
+    ],
+    commonScenarios: [
+      'A parent is already on another family leave arrangement when neonatal care becomes relevant.',
+      'The team wants to support quickly but no one is sure which leave category applies.',
+    ],
+    recordsToKeep: ['Initial notification', 'Leave and pay handoff note', 'Support actions agreed'],
+    riskNotes: [
+      'Managers should not improvise pay answers in a highly sensitive situation.',
+      'Using annual leave as the default answer may be wrong and can feel deeply unsupportive.',
+    ],
+    sourceSummary: [
+      'GOV.UK provides the most practical employer-facing guide for neonatal leave and pay arrangements.',
+    ],
+  },
+  'data-protection-in-hr': {
+    managerChecklist: [
+      'Use approved storage and sharing routes for employee records.',
+      'Ask whether the recipient really needs the information before sending it.',
+      'Flag suspected breaches or unusual requests immediately.',
+    ],
+    commonScenarios: [
+      'A manager wants to send sickness or disciplinary material to a wider group for context.',
+      'An employee asks what information is held about them or how long it is kept.',
+    ],
+    recordsToKeep: ['Access decisions', 'Sharing rationale', 'Incident logs', 'Retention actions where relevant'],
+    riskNotes: [
+      'Health, disciplinary, and grievance records are especially easy to overshare.',
+      'Managers create avoidable risk when they keep private copies outside HR systems.',
+    ],
+    sourceSummary: [
+      'ICO employment and worker-health guidance is the strongest practical source for everyday manager handling of HR data.',
+    ],
+  },
+  'monitoring-at-work': {
+    managerChecklist: [
+      'Define the business issue before proposing monitoring.',
+      'Check whether there is a less intrusive way to solve the problem.',
+      'Get approval and communicate the approach clearly before using it.',
+    ],
+    commonScenarios: [
+      'A manager wants to track logins or online status because productivity feels lower remotely.',
+      'Email or system records may need to be reviewed during an investigation.',
+    ],
+    recordsToKeep: ['Business reason note', 'Approval trail', 'Communication to employees', 'Investigation scope if relevant'],
+    riskNotes: [
+      'Monitoring often feels like a quick fix but can create privacy and trust issues fast.',
+      'Using monitoring selectively against one employee without a clear basis can become unfair and risky.',
+    ],
+    sourceSummary: [
+      'ICO guidance is the key practical source where manager decisions overlap with privacy and worker data.',
+    ],
+  },
+  'whistleblowing': {
+    managerChecklist: [
+      'Record the concern factually and route it through the protected disclosure process quickly.',
+      'Limit knowledge of the report to the people handling it.',
+      'Watch for any sign of retaliation after the disclosure is made.',
+    ],
+    commonScenarios: [
+      'An employee reports suspected fraud or legal non-compliance but says they fear being identified.',
+      'A manager receives a concern that sounds part personal complaint and part public-interest issue.',
+    ],
+    recordsToKeep: ['Disclosure note', 'Escalation path used', 'Protective actions', 'Follow-up decisions'],
+    riskNotes: [
+      'Misclassifying a protected disclosure as a routine complaint can create serious legal risk.',
+      'Retaliation concerns often arise after the initial disclosure rather than on day one.',
+    ],
+    sourceSummary: [
+      'The Employment Rights Act is the main legal source for protected disclosure protections.',
+    ],
+  },
+  'training-repayment-agreements': {
+    managerChecklist: [
+      'Agree the repayment terms before the training starts, not after the invoice arrives.',
+      'Check whether the training is optional and whether the clause is proportionate.',
+      'Make sure payroll and HR hold the signed agreement.',
+    ],
+    commonScenarios: [
+      'An employee resigns shortly after expensive external training and the manager wants to recover the cost.',
+      'A professional qualification is mandatory for the role and repayment may not be straightforward.',
+    ],
+    recordsToKeep: ['Training approval', 'Signed repayment agreement', 'Cost evidence', 'Payroll instruction if used'],
+    riskNotes: [
+      'Verbal agreements are weak and hard to rely on later.',
+      'Managers often assume every training cost is recoverable when the contractual position is not clear.',
+    ],
+    sourceSummary: [
+      'The Employment Rights Act is relevant where deductions from wages or contractual enforcement are in play.',
+    ],
+  },
+  'notice-and-exit-steps': {
+    managerChecklist: [
+      'Confirm the resignation or notice details in writing and check the contractual notice period.',
+      'Plan handover, access, holiday balance, and final dates with HR.',
+      'Keep treatment professional throughout the notice period even where emotions are running high.',
+    ],
+    commonScenarios: [
+      'An employee resigns verbally and the manager is unsure what the confirmed end date should be.',
+      'There is a request for garden leave or immediate removal from systems.',
+    ],
+    recordsToKeep: ['Resignation confirmation', 'Notice calculation', 'Exit checklist', 'Handover notes'],
+    riskNotes: [
+      'Informal end-date changes create avoidable disputes about pay, holiday, and notice.',
+      'Managers can create risk by treating notice as punishment instead of a managed exit process.',
+    ],
+    sourceSummary: [
+      'The Employment Rights Act is the key source where notice rights and contractual exit issues are being checked.',
+    ],
+  },
+  'redundancy-basics': {
+    managerChecklist: [
+      'Pause early and involve HR before speaking to affected employees about outcomes.',
+      'Clarify the business rationale, pool, alternatives, and consultation route.',
+      'Document why redundancy, rather than performance or conduct management, is the real issue.',
+    ],
+    commonScenarios: [
+      'A restructure may remove a role but there are possible alternative vacancies.',
+      'A manager says a role is redundant when the concern is actually underperformance.',
+    ],
+    recordsToKeep: ['Business case', 'Consultation plan', 'Selection rationale', 'Alternative role review'],
+    riskNotes: [
+      'Early wording from managers can prejudice the whole process if outcomes sound predetermined.',
+      'Pooling, consultation, and family-leave protections make redundancy higher risk than many managers expect.',
+    ],
+    sourceSummary: [
+      'Acas gives the clearest practical process guidance for employers.',
+      'GOV.UK helps with rights and payments, while the Employment Rights Act remains the legal foundation.',
+    ],
+  },
+  'references-after-employment': {
+    managerChecklist: [
+      'Use the agreed reference route or standard wording.',
+      'Check dates, job title, and any approved wording before replying.',
+      'Escalate anything outside the normal factual reference approach.',
+    ],
+    commonScenarios: [
+      'A future employer asks for a detailed conduct view rather than a basic factual reference.',
+      'There is a live dispute or settlement agreement and the wording may be sensitive.',
+    ],
+    recordsToKeep: ['Reference request', 'Reference sent', 'Approval or escalation note'],
+    riskNotes: [
+      'Managers create risk when they give personal opinions on company letterhead.',
+      'Live allegations or unresolved disputes should not be described as proven fact.',
+    ],
+    sourceSummary: [
+      'ICO guidance helps with fair handling and retention of employment records used in references.',
+    ],
+  },
 };
 
 export const managerReferenceGuides: ManagerReferenceGuide[] = [

@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
 import {
   managerReferenceBuildOrder,
+  managerReferenceGuideEnhancements,
   managerReferenceGuides,
   managerReferenceGuideSources,
   managerReferencePriorities,
@@ -1069,6 +1070,9 @@ export default function HrAdmin() {
         .map((sourceId) => managerReferenceSourceLibrary[sourceId])
         .filter(Boolean)
     : [];
+  const selectedReferenceEnhancement = selectedReferenceGuide
+    ? managerReferenceGuideEnhancements[selectedReferenceGuide.id]
+    : null;
 
   return (
     <div className="page-frame">
@@ -2323,6 +2327,46 @@ export default function HrAdmin() {
                         </ul>
                       </div>
                     </div>
+                    {selectedReferenceEnhancement && (
+                      <>
+                        <div className="reference-columns">
+                          <div className="surface-panel stack" style={{ padding: '16px' }}>
+                            <h4 style={{ marginBottom: '0.35rem' }}>Manager checklist</h4>
+                            <ul className="reference-list-points">
+                              {selectedReferenceEnhancement.managerChecklist.map((point) => (
+                                <li key={point}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="surface-panel stack" style={{ padding: '16px' }}>
+                            <h4 style={{ marginBottom: '0.35rem' }}>Common scenarios</h4>
+                            <ul className="reference-list-points">
+                              {selectedReferenceEnhancement.commonScenarios.map((point) => (
+                                <li key={point}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        <div className="reference-columns">
+                          <div className="surface-panel stack" style={{ padding: '16px' }}>
+                            <h4 style={{ marginBottom: '0.35rem' }}>Evidence and records to keep</h4>
+                            <ul className="reference-list-points">
+                              {selectedReferenceEnhancement.recordsToKeep.map((point) => (
+                                <li key={point}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="surface-panel stack" style={{ padding: '16px' }}>
+                            <h4 style={{ marginBottom: '0.35rem' }}>Red flags and legal risk</h4>
+                            <ul className="reference-list-points">
+                              {selectedReferenceEnhancement.riskNotes.map((point) => (
+                                <li key={point}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </>
+                    )}
                     <div className="surface-panel stack" style={{ padding: '16px' }}>
                       <h4 style={{ marginBottom: '0.35rem' }}>Related forms</h4>
                       <div className="reference-tag-row">
@@ -2339,6 +2383,16 @@ export default function HrAdmin() {
                         <p className="muted-text" style={{ margin: 0 }}>
                           Use these links to validate the live guidance or check the underlying legal source.
                         </p>
+                        {selectedReferenceEnhancement && (
+                          <div className="surface-panel stack" style={{ padding: '14px' }}>
+                            <span className="summary-label">What these sources help with</span>
+                            <ul className="reference-list-points">
+                              {selectedReferenceEnhancement.sourceSummary.map((point) => (
+                                <li key={point}>{point}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                         <div className="reference-source-list">
                           {selectedReferenceSources.map((source) => (
                             <a
