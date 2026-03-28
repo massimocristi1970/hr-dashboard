@@ -409,6 +409,23 @@ function getReferenceSearchIndex(values: string[]) {
   return normalizeReferenceSearchText(values.join(' '));
 }
 
+function matchesReferenceSearch(searchTokens: string[], values: string[]) {
+  if (searchTokens.length === 0) {
+    return true;
+  }
+
+  const normalizedText = getReferenceSearchIndex(values);
+  const normalizedWords = normalizedText.split(' ').filter(Boolean);
+
+  return searchTokens.every((token) => {
+    if (normalizedText.includes(token)) {
+      return true;
+    }
+
+    return normalizedWords.some((word) => word.startsWith(token));
+  });
+}
+
 function getReferenceMatchLabel(
   guide: typeof managerReferenceGuides[number],
   tokens: string[]
@@ -429,7 +446,7 @@ function getReferenceMatchLabel(
   ];
 
   const matchingGroup = matchGroups.find((group) =>
-    tokens.every((token) => getReferenceSearchIndex(group.values).includes(token))
+    matchesReferenceSearch(tokens, group.values)
   );
 
   return matchingGroup ? `Matched in ${matchingGroup.label}` : 'Matched in guide content';
@@ -970,7 +987,7 @@ export default function HrAdmin() {
       return true;
     }
 
-    const searchIndex = getReferenceSearchIndex([
+    return matchesReferenceSearch(referenceSearchTokens, [
       guide.title,
       guide.sectionLabel,
       guide.whenToUse,
@@ -982,8 +999,6 @@ export default function HrAdmin() {
       ...guide.whenToEscalate,
       ...guide.relatedForms,
     ]);
-
-    return referenceSearchTokens.every((token) => searchIndex.includes(token));
   });
   const selectedReferenceGuide =
     filteredReferenceGuides.find((guide) => guide.id === selectedReferenceId) ||
