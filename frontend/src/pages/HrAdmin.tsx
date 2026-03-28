@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
+import {
+  managerReferenceBuildOrder,
+  managerReferenceGuides,
+  managerReferencePriorities,
+  managerReferenceSections,
+} from '../lib/managerReference';
 
 interface LeaveSummary {
   year: number;
@@ -409,13 +415,16 @@ export default function HrAdmin() {
   const [showBlockedDayForm, setShowBlockedDayForm] = useState(false);
   const [showBankHolidayForm, setShowBankHolidayForm] = useState(false);
   const [showAppraisalAreaForm, setShowAppraisalAreaForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'bank-holidays' | 'appraisals' | 'absence'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'leave' | 'blocked-days' | 'bank-holidays' | 'appraisals' | 'absence' | 'manager-reference'>('employees');
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
   const [editingLeaveId, setEditingLeaveId] = useState<number | null>(null);
   const [selectedAbsenceEmployeeId, setSelectedAbsenceEmployeeId] = useState<number | null>(null);
   const [selectedAbsenceId, setSelectedAbsenceId] = useState<number | null>(null);
   const [returnToWorkDetail, setReturnToWorkDetail] = useState<ReturnToWorkDetail | null>(null);
   const [returnToWorkFormData, setReturnToWorkFormData] = useState<ReturnToWorkFormData>(createEmptyReturnToWorkForm());
+  const [referenceSearch, setReferenceSearch] = useState('');
+  const [referenceSectionFilter, setReferenceSectionFilter] = useState('all');
+  const [selectedReferenceId, setSelectedReferenceId] = useState<string>(managerReferenceGuides[0]?.id || '');
   const [leaveFilters, setLeaveFilters] = useState({
     employee_id: 'all',
     leave_type: 'all',
@@ -470,6 +479,12 @@ export default function HrAdmin() {
       setSelectedAbsenceEmployeeId(absenceAdmin[0].id);
     }
   }, [absenceAdmin, selectedAbsenceEmployeeId]);
+
+  useEffect(() => {
+    if (!managerReferenceGuides.some((guide) => guide.id === selectedReferenceId) && managerReferenceGuides[0]) {
+      setSelectedReferenceId(managerReferenceGuides[0].id);
+    }
+  }, [selectedReferenceId]);
 
   async function loadData() {
     try {
@@ -910,6 +925,37 @@ export default function HrAdmin() {
   const selectedAbsenceEmployee = absenceAdmin.find((employee) => employee.id === selectedAbsenceEmployeeId) || absenceAdmin[0] || null;
   const totalAbsenceOccurrences = absenceAdmin.reduce((sum, employee) => sum + employee.absences.length, 0);
   const totalAbsenceDays = Number(absenceAdmin.reduce((sum, employee) => sum + employee.absence_summary.total_days, 0).toFixed(2));
+  const referenceSearchTerm = referenceSearch.trim().toLowerCase();
+  const filteredReferenceGuides = managerReferenceGuides.filter((guide) => {
+    if (referenceSectionFilter !== 'all' && guide.section !== referenceSectionFilter) {
+      return false;
+    }
+
+    if (!referenceSearchTerm) {
+      return true;
+    }
+
+    const searchIndex = [
+      guide.title,
+      guide.sectionLabel,
+      guide.whenToUse,
+      guide.whatThisIs,
+      ...guide.tags,
+      ...guide.keyLegalPoints,
+      ...guide.managerShouldDo,
+      ...guide.managerShouldNotDo,
+      ...guide.whenToEscalate,
+      ...guide.relatedForms,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return searchIndex.includes(referenceSearchTerm);
+  });
+  const selectedReferenceGuide =
+    filteredReferenceGuides.find((guide) => guide.id === selectedReferenceId) ||
+    filteredReferenceGuides[0] ||
+    null;
 
   return (
     <div className="page-frame">
@@ -976,6 +1022,12 @@ export default function HrAdmin() {
           onClick={() => setActiveTab('absence')}
         >
           Absence
+        </button>
+        <button
+          className={activeTab === 'manager-reference' ? 'btn' : 'btn btn-secondary'}
+          onClick={() => setActiveTab('manager-reference')}
+        >
+          Manager Reference
         </button>
       </div>
 
@@ -1966,6 +2018,216 @@ export default function HrAdmin() {
                 )}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'manager-reference' && (
+        <section className="card table-card">
+          <div className="section-header">
+            <div>
+              <h2>Manager Reference</h2>
+              <p>Searchable UK employment law prompts for managers inside the admin workspace.</p>
+            </div>
+            <div className="inline-actions">
+              <span className="status-badge status-neutral">{managerReferenceGuides.length} guides</span>
+              <span className="status-badge status-neutral">{filteredReferenceGuides.length} shown</span>
+            </div>
+          </div>
+
+          <div className="reference-summary-grid">
+            <div className="surface-panel stack" style={{ gap: '12px' }}>
+              <span className="summary-label">Coverage</span>
+              <strong className="summary-value summary-value--primary">{managerReferenceSections.length} sections</strong>
+              <p className="muted-text" style={{ margin: 0 }}>
+                Built from the internal reference pack structure for managers and HR admins.
+              </p>
+            </div>
+            <div className="surface-panel stack" style={{ gap: '12px' }}>
+              <span className="summary-label">Search Tags</span>
+              <strong className="summary-value summary-value--success">
+                {new Set(managerReferenceGuides.flatMap((guide) => guide.tags)).size}
+              </strong>
+              <p className="muted-text" style={{ margin: 0 }}>
+                Tags cover absence, probation, grievance, disciplinary, flexibility, redundancy, and more.
+              </p>
+            </div>
+            <div className="surface-panel stack" style={{ gap: '12px' }}>
+              <span className="summary-label">Priority Gaps</span>
+              <strong className="summary-value summary-value--warning">{managerReferencePriorities.length}</strong>
+              <p className="muted-text" style={{ margin: 0 }}>
+                Quick view of the high-priority policy areas still worth formalising next.
+              </p>
+            </div>
+          </div>
+
+          <div className="reference-search-bar">
+            <div className="form-group">
+              <label htmlFor="manager-reference-search">Search guides</label>
+              <input
+                id="manager-reference-search"
+                type="search"
+                placeholder="Try sickness, probation, flexible working, redundancy..."
+                value={referenceSearch}
+                onChange={(e) => setReferenceSearch(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="manager-reference-section">Filter by section</label>
+              <select
+                id="manager-reference-section"
+                value={referenceSectionFilter}
+                onChange={(e) => setReferenceSectionFilter(e.target.value)}
+              >
+                <option value="all">All sections</option>
+                {managerReferenceSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="reference-layout">
+            <div className="reference-list stack">
+              <div className="surface-panel stack">
+                <h3 style={{ marginBottom: '0.35rem' }}>Reference Index</h3>
+                <p style={{ margin: 0 }}>
+                  Choose a guide to read the manager prompts, escalation cues, and related forms.
+                </p>
+              </div>
+
+              {filteredReferenceGuides.length === 0 ? (
+                <div className="empty-state surface-panel">No guides match that search yet.</div>
+              ) : (
+                filteredReferenceGuides.map((guide) => (
+                  <button
+                    key={guide.id}
+                    type="button"
+                    className={`reference-card${selectedReferenceGuide?.id === guide.id ? ' is-selected' : ''}`}
+                    onClick={() => setSelectedReferenceId(guide.id)}
+                  >
+                    <span className="reference-card__section">{guide.sectionLabel}</span>
+                    <strong>{guide.title}</strong>
+                    <span className="reference-card__copy">{guide.whenToUse}</span>
+                    <div className="reference-tag-row">
+                      {guide.tags.slice(0, 4).map((tag) => (
+                        <span key={tag} className="status-badge status-neutral">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="reference-detail stack">
+              {selectedReferenceGuide ? (
+                <>
+                  <div className="surface-panel stack">
+                    <div className="section-header">
+                      <div>
+                        <span className="reference-card__section">{selectedReferenceGuide.sectionLabel}</span>
+                        <h3 style={{ marginBottom: '0.35rem' }}>{selectedReferenceGuide.title}</h3>
+                        <p style={{ margin: 0 }}>{selectedReferenceGuide.whatThisIs}</p>
+                      </div>
+                      <span className="status-badge status-neutral">Last reviewed {selectedReferenceGuide.lastReviewed}</span>
+                    </div>
+                    <div className="surface-panel stack" style={{ padding: '14px' }}>
+                      <span className="summary-label">When to use it</span>
+                      <p style={{ margin: 0 }}>{selectedReferenceGuide.whenToUse}</p>
+                    </div>
+                    <div className="reference-columns">
+                      <div className="surface-panel stack" style={{ padding: '16px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>Key legal points</h4>
+                        <ul className="reference-list-points">
+                          {selectedReferenceGuide.keyLegalPoints.map((point) => (
+                            <li key={point}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="surface-panel stack" style={{ padding: '16px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>What managers should do</h4>
+                        <ul className="reference-list-points">
+                          {selectedReferenceGuide.managerShouldDo.map((point) => (
+                            <li key={point}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="reference-columns">
+                      <div className="surface-panel stack" style={{ padding: '16px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>What managers should not do</h4>
+                        <ul className="reference-list-points">
+                          {selectedReferenceGuide.managerShouldNotDo.map((point) => (
+                            <li key={point}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="surface-panel stack" style={{ padding: '16px' }}>
+                        <h4 style={{ marginBottom: '0.35rem' }}>When to escalate</h4>
+                        <ul className="reference-list-points">
+                          {selectedReferenceGuide.whenToEscalate.map((point) => (
+                            <li key={point}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    <div className="surface-panel stack" style={{ padding: '16px' }}>
+                      <h4 style={{ marginBottom: '0.35rem' }}>Related forms</h4>
+                      <div className="reference-tag-row">
+                        {selectedReferenceGuide.relatedForms.map((form) => (
+                          <span key={form} className="status-badge status-neutral">
+                            {form}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="reference-columns">
+                    <div className="surface-panel stack">
+                      <h3 style={{ marginBottom: '0.35rem' }}>Section Overview</h3>
+                      {managerReferenceSections.map((section) => (
+                        <div key={section.id} className="reference-overview-item">
+                          <strong>{section.label}</strong>
+                          <p>{section.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="surface-panel stack">
+                      <h3 style={{ marginBottom: '0.35rem' }}>Priority Policies</h3>
+                      {managerReferencePriorities.map((priority) => (
+                        <div key={priority.title} className="reference-overview-item">
+                          <strong>{priority.title}</strong>
+                          <p>{priority.reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="surface-panel stack">
+                    <h3 style={{ marginBottom: '0.35rem' }}>Suggested Build Order</h3>
+                    <div className="reference-phase-grid">
+                      {managerReferenceBuildOrder.map((phase) => (
+                        <div key={phase.phase} className="surface-panel stack" style={{ padding: '16px' }}>
+                          <span className="summary-label">{phase.phase}</span>
+                          <ul className="reference-list-points">
+                            {phase.items.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state surface-panel">Choose a guide to see the manager reference details.</div>
+              )}
+            </div>
           </div>
         </section>
       )}

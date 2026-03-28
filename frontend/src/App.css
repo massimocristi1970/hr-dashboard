@@ -518,6 +518,103 @@
   gap: 16px;
 }
 
+.reference-summary-grid,
+.reference-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.reference-search-bar,
+.reference-columns,
+.reference-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.reference-search-bar,
+.reference-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reference-layout {
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.6fr);
+  align-items: start;
+}
+
+.reference-list,
+.reference-detail {
+  min-width: 0;
+}
+
+.reference-card {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-text);
+  box-shadow: none;
+}
+
+.reference-card:hover,
+.reference-card.is-selected {
+  border-color: rgba(31, 93, 140, 0.28);
+  background: rgba(232, 242, 251, 0.96);
+}
+
+.reference-card__section {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(31, 93, 140, 0.12);
+  color: var(--color-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.reference-card__copy {
+  color: var(--color-muted-strong);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.reference-tag-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reference-list-points {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 10px;
+  color: var(--color-text);
+}
+
+.reference-overview-item {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(22, 34, 53, 0.08);
+}
+
+.reference-overview-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.reference-overview-item p {
+  margin: 0.35rem 0 0;
+  color: var(--color-muted-strong);
+}
+
 .legend-grid {
   display: flex;
   flex-wrap: wrap;
@@ -670,7 +767,10 @@
   }
 
   .hero-grid,
-  .form-grid--two {
+  .form-grid--two,
+  .reference-search-bar,
+  .reference-columns,
+  .reference-layout {
     grid-template-columns: 1fr;
   }
 }
