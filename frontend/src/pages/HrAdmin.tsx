@@ -409,28 +409,81 @@ function getReferenceSearchIndex(values: string[]) {
   return normalizeReferenceSearchText(values.join(' '));
 }
 
-function matchesReferenceSearch(searchTokens: string[], values: string[]) {
-  if (searchTokens.length === 0) {
+const referenceSearchAliases: Record<string, string[]> = {
+  absence: ['sickness', 'sick', 'illness', 'attendance', 'fit', 'note', 'rtw', 'return', 'bradford'],
+  sick: ['sickness', 'absence', 'illness', 'fit', 'note', 'rtw', 'return'],
+  sickness: ['sick', 'absence', 'illness', 'fit', 'note', 'rtw', 'return'],
+  fit: ['fitnote', 'note', 'sickness', 'absence'],
+  fitnote: ['fit', 'note', 'sickness', 'absence'],
+  holiday: ['annual', 'leave', 'carryover', 'carry', 'entitlement', 'vacation'],
+  annual: ['holiday', 'leave', 'entitlement', 'carryover'],
+  carryover: ['carry', 'over', 'holiday', 'annual', 'leave'],
+  probation: ['starter', 'new', 'review', 'extension', 'confirm'],
+  disciplinary: ['misconduct', 'investigation', 'hearing', 'warning', 'conduct'],
+  misconduct: ['disciplinary', 'hearing', 'warning', 'conduct'],
+  grievance: ['complaint', 'concern', 'appeal', 'dispute'],
+  complaint: ['grievance', 'concern', 'appeal', 'dispute'],
+  performance: ['capability', 'pip', 'underperformance', 'targets', 'review'],
+  capability: ['performance', 'pip', 'underperformance'],
+  pip: ['performance', 'capability', 'improvement'],
+  equality: ['discrimination', 'adjustments', 'reasonable', 'disability', 'harassment'],
+  discrimination: ['equality', 'disability', 'harassment', 'adjustments'],
+  disability: ['adjustments', 'reasonable', 'equality', 'discrimination'],
+  adjustments: ['reasonable', 'adjustment', 'disability', 'equality'],
+  harassment: ['sexual', 'bullying', 'conduct', 'inappropriate'],
+  bullying: ['harassment', 'conduct', 'sexual'],
+  maternity: ['pregnancy', 'family', 'mat', 'leave'],
+  pregnancy: ['maternity', 'family', 'mat', 'leave'],
+  paternity: ['parental', 'family', 'pat', 'leave'],
+  parental: ['paternity', 'maternity', 'family', 'leave'],
+  neonatal: ['baby', 'family', 'leave', 'pay'],
+  flexible: ['hours', 'hybrid', 'remote', 'wfh', 'location', 'homeworking'],
+  remote: ['wfh', 'hybrid', 'homeworking', 'working', 'home'],
+  hybrid: ['remote', 'wfh', 'homeworking'],
+  wfh: ['remote', 'hybrid', 'homeworking', 'working', 'home'],
+  homeworking: ['remote', 'hybrid', 'wfh', 'working', 'home'],
+  gdpr: ['data', 'protection', 'privacy', 'employee', 'data'],
+  privacy: ['data', 'protection', 'gdpr', 'monitoring'],
+  monitoring: ['privacy', 'surveillance', 'remote', 'data'],
+  whistleblowing: ['protected', 'disclosure', 'fraud', 'retaliation'],
+  disclosure: ['protected', 'whistleblowing', 'fraud'],
+  notice: ['resignation', 'exit', 'handover', 'garden', 'leave'],
+  resignation: ['notice', 'exit', 'handover', 'garden', 'leave'],
+  exit: ['notice', 'resignation', 'handover'],
+  redundancy: ['redundant', 'restructure', 'consultation', 'selection', 'role'],
+  redundant: ['redundancy', 'restructure', 'consultation', 'selection'],
+  restructure: ['redundancy', 'redundant', 'consultation', 'selection'],
+  visa: ['immigration', 'right', 'work', 'checks'],
+  immigration: ['visa', 'right', 'work', 'checks'],
+  recruitment: ['references', 'checks', 'offer', 'dbs'],
+  rtw: ['return', 'work', 'sickness', 'absence', 'fit', 'note'],
+};
+
+function expandReferenceSearchGroups(searchTokens: string[]) {
+  return searchTokens.map((token) => {
+    const relatedTokens = referenceSearchAliases[token] || [];
+    return Array.from(new Set([token, ...relatedTokens].map(normalizeReferenceSearchText).filter(Boolean)));
+  });
+}
+
+function matchesReferenceSearch(searchGroups: string[][], values: string[]) {
+  if (searchGroups.length === 0) {
     return true;
   }
 
   const normalizedText = getReferenceSearchIndex(values);
   const normalizedWords = normalizedText.split(' ').filter(Boolean);
 
-  return searchTokens.every((token) => {
-    if (normalizedText.includes(token)) {
-      return true;
-    }
-
-    return normalizedWords.some((word) => word.startsWith(token));
-  });
+  return searchGroups.every((group) =>
+    group.some((token) => normalizedText.includes(token) || normalizedWords.some((word) => word.startsWith(token)))
+  );
 }
 
 function getReferenceMatchLabel(
   guide: typeof managerReferenceGuides[number],
-  tokens: string[]
+  searchGroups: string[][]
 ) {
-  if (tokens.length === 0) {
+  if (searchGroups.length === 0) {
     return '';
   }
 
@@ -446,7 +499,7 @@ function getReferenceMatchLabel(
   ];
 
   const matchingGroup = matchGroups.find((group) =>
-    matchesReferenceSearch(tokens, group.values)
+    matchesReferenceSearch(searchGroups, group.values)
   );
 
   return matchingGroup ? `Matched in ${matchingGroup.label}` : 'Matched in guide content';
@@ -978,16 +1031,17 @@ export default function HrAdmin() {
   const totalAbsenceDays = Number(absenceAdmin.reduce((sum, employee) => sum + employee.absence_summary.total_days, 0).toFixed(2));
   const referenceSearchTerm = normalizeReferenceSearchText(referenceSearch);
   const referenceSearchTokens = referenceSearchTerm ? referenceSearchTerm.split(' ').filter(Boolean) : [];
+  const referenceSearchGroups = expandReferenceSearchGroups(referenceSearchTokens);
   const filteredReferenceGuides = managerReferenceGuides.filter((guide) => {
     if (referenceSectionFilter !== 'all' && guide.section !== referenceSectionFilter) {
       return false;
     }
 
-    if (referenceSearchTokens.length === 0) {
+    if (referenceSearchGroups.length === 0) {
       return true;
     }
 
-    return matchesReferenceSearch(referenceSearchTokens, [
+    return matchesReferenceSearch(referenceSearchGroups, [
       guide.title,
       guide.sectionLabel,
       guide.whenToUse,
@@ -2188,8 +2242,8 @@ export default function HrAdmin() {
                     <span className="reference-card__section">{guide.sectionLabel}</span>
                     <strong>{guide.title}</strong>
                     <span className="reference-card__copy">{guide.whenToUse}</span>
-                    {referenceSearchTokens.length > 0 && (
-                      <span className="reference-card__match">{getReferenceMatchLabel(guide, referenceSearchTokens)}</span>
+                    {referenceSearchGroups.length > 0 && (
+                      <span className="reference-card__match">{getReferenceMatchLabel(guide, referenceSearchGroups)}</span>
                     )}
                     <div className="reference-tag-row">
                       {guide.tags.slice(0, 4).map((tag) => (
