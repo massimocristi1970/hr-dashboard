@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { calculateWorkingLeaveDays } from '../lib/leaveCalendarDates';
 import {
-  managerReferenceBuildOrder,
+  managerReferenceDeliveryStatus,
+  managerReferenceFaqs,
   managerReferenceGuideEnhancements,
   managerReferenceGuides,
   managerReferenceGuideSources,
@@ -2433,19 +2434,33 @@ export default function HrAdmin() {
                   </div>
 
                   <div className="surface-panel stack">
-                    <h3 style={{ marginBottom: '0.35rem' }}>Suggested Build Order</h3>
+                    <h3 style={{ marginBottom: '0.35rem' }}>Reference Coverage</h3>
                     <div className="reference-phase-grid">
-                      {managerReferenceBuildOrder.map((phase) => (
+                      {managerReferenceDeliveryStatus.map((phase) => (
                         <div key={phase.phase} className="surface-panel stack" style={{ padding: '16px' }}>
-                          <span className="summary-label">{phase.phase}</span>
+                          <div className="section-header">
+                            <span className="summary-label">{phase.phase}</span>
+                            <span className="status-badge status-approved">{phase.status}</span>
+                          </div>
+                          <p className="muted-text" style={{ margin: 0 }}>{phase.summary}</p>
                           <ul className="reference-list-points">
                             {phase.items.map((item) => (
-                              <li key={item}>{item}</li>
+                              <li key={item.label}>{item.label}</li>
                             ))}
                           </ul>
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  <div className="surface-panel stack">
+                    <h3 style={{ marginBottom: '0.35rem' }}>Manager FAQ</h3>
+                    {managerReferenceFaqs.map((faq) => (
+                      <div key={faq.question} className="reference-overview-item">
+                        <strong>{faq.question}</strong>
+                        <p>{faq.answer}</p>
+                      </div>
+                    ))}
                   </div>
                 </>
               ) : (

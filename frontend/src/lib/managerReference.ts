@@ -25,6 +25,11 @@ export interface ManagerReferencePriority {
   reason: string;
 }
 
+export interface ManagerReferenceFaq {
+  question: string;
+  answer: string;
+}
+
 export interface ManagerReferenceSource {
   id: string;
   label: string;
@@ -133,6 +138,66 @@ export const managerReferenceBuildOrder = [
   {
     phase: 'Phase 3',
     items: ['FAQ', 'Tags', 'Search'],
+  },
+];
+
+export const managerReferenceDeliveryStatus = [
+  {
+    phase: 'Phase 1',
+    status: 'Delivered',
+    summary: 'The index, absence, disciplinary, grievance, and flexible working guides are all now built into the manager reference section.',
+    items: [
+      { label: 'Employment law index', done: true },
+      { label: 'Absence guide', done: true },
+      { label: 'Disciplinary guide', done: true },
+      { label: 'Grievance guide', done: true },
+      { label: 'Flexible working guide', done: true },
+    ],
+  },
+  {
+    phase: 'Phase 2',
+    status: 'Delivered',
+    summary: 'Probation, reasonable adjustments, data protection, right to work, and redundancy content is now included in the handbook data.',
+    items: [
+      { label: 'Probation guide', done: true },
+      { label: 'Reasonable adjustments', done: true },
+      { label: 'Data protection', done: true },
+      { label: 'Right to work', done: true },
+      { label: 'Redundancy guide', done: true },
+    ],
+  },
+  {
+    phase: 'Phase 3',
+    status: 'Delivered',
+    summary: 'Search and tags are live, and the FAQ layer is now part of the manager reference experience.',
+    items: [
+      { label: 'FAQ', done: true },
+      { label: 'Tags', done: true },
+      { label: 'Search', done: true },
+    ],
+  },
+];
+
+export const managerReferenceFaqs: ManagerReferenceFaq[] = [
+  {
+    question: 'When should a manager stop and escalate instead of handling it alone?',
+    answer: 'Escalate early where dismissal, discrimination, disability, pregnancy, whistleblowing, harassment, redundancy, or data protection issues could be in play. The manager reference guides call these out topic by topic so managers can spot risk before committing to a decision.',
+  },
+  {
+    question: 'Does this replace HR or legal advice?',
+    answer: 'No. It is a manager handbook to help people frame the issue, follow the right process, and gather the right records. The linked ACAS, GOV.UK, legislation, and ICO sources help validate the live position, but higher-risk cases should still move to HR or legal review.',
+  },
+  {
+    question: 'What should managers record in most employee relations cases?',
+    answer: 'Usually the issue raised, key dates, what was discussed, what support or actions were offered, what evidence was reviewed, and what decision was made. The record-keeping panel in each guide highlights the essentials for that topic.',
+  },
+  {
+    question: 'Why does search return guides even when I use shorthand terms?',
+    answer: 'The search now expands common manager wording and shortcuts such as WFH, RTW, GDPR, complaint, PIP, fit note, and redundant so managers do not need perfect legal wording to find the right topic.',
+  },
+  {
+    question: 'How should managers use the official source links?',
+    answer: 'Use them to sense-check the current ACAS or GOV.UK guidance, or to see the primary legal or ICO source behind a topic. The handbook summarises practical use, but the links are there for live verification and more detail.',
   },
 ];
 
